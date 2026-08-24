@@ -60,3 +60,50 @@ logs, credential-like files, and secret-like files are excluded.
 
 No `az`, `azd`, portal, provisioning, deployment, role-assignment, or other Azure mutation is
 part of Gate 10.
+
+## Gate 11 deployment and runtime acceptance
+
+Gate 11 was accepted on **2026-08-25** against the existing East US 2 Foundry account
+`zcxie-test-5455-resource`, project `zcxie-test-5455`, and `gpt-4.1-mini` deployment in subscription
+`1d7a7fd7-0893-4ead-8a86-e671cc9e47b1`. Deployment used clean `main` commit
+`3395dc9767cde89f4f1672c7206ed5af18e2945a` and only this command:
+
+```powershell
+azd deploy attacker-hosted -e gate11-attacker --no-prompt --timeout 1200
+```
+
+`strategy-redteam-attacker` version 3 reached `active`. Its managed identity is
+`42c5143f-b009-42bf-a417-1fc47e983792`; its endpoint is
+`https://zcxie-test-5455-resource.services.ai.azure.com/api/projects/zcxie-test-5455/agents/strategy-redteam-attacker/endpoint/protocols/invocations?api-version=v1`.
+The downloaded version-3 source contained the same 19 paths, byte lengths, and content hashes as
+the clean-HEAD audited package. The deterministic ZIP SHA-256 was
+`6d33517a9bec715f541b151bfcf8677963f05832d42c777bc95d68a9fcfd1f1a`; Azure's downloaded outer
+ZIP/content hash was `f98846a9390577607b4320ae5ea4266815051205a7ffc266e90a05a6317cea30`.
+
+The permanent runtime role set is exactly:
+
+- `Storage Blob Data Reader` on
+  `/subscriptions/1d7a7fd7-0893-4ead-8a86-e671cc9e47b1/resourceGroups/rg-zcxie-7188/providers/Microsoft.Storage/storageAccounts/strt5455g11/blobServices/default/containers/strategy-redteam-datasets`,
+  assignment `de0d68ac-8dee-40d2-a944-fe2c0c8338f9`.
+- `Storage Blob Data Contributor` on
+  `/subscriptions/1d7a7fd7-0893-4ead-8a86-e671cc9e47b1/resourceGroups/rg-zcxie-7188/providers/Microsoft.Storage/storageAccounts/strt5455g11/blobServices/default/containers/strategy-redteam-attacker-artifacts`,
+  assignment `592a3f99-bce9-496e-a733-b0eeabd492c1`.
+
+Exactly one smoke invocation ran with experiment `gate11b-attacker-smoke-003`, seed `20260823`,
+and budgets `1/1/1/1`. It returned a schema-valid 6,901-byte response and exactly seven verified
+artifacts below `strategy-redteam/attacker/gate11b-attacker-smoke-003/`; dataset and manifest hashes,
+artifact hashes, schemas, and provenance passed the committed verifier. Correlation identifiers are
+session `224985de71892b8700Mp31Kt6VnCfUlMTEaEpA4gIzJ2NTW4P1`, invocation
+`inv_c29f7b05904e118700jnuuTFkHsWRDy9UUxj1DYaVW0hF1wS5R`, APIM request
+`b6e9e94d-78fd-4229-9a0a-b79a9468f147`, and Application Insights operation
+`ebf02cf84d6b8f27efa825bbcffc093c`.
+
+The correlated trace proves managed-identity dataset access, one successful project-endpoint model
+call, the custom attacker span, artifact Blob creates, and HTTP 200 completion. Trace ingestion used
+the existing project/Application Insights connection; Entra-only ingestion and
+`Monitoring Metrics Publisher` remain deferred. No monitoring role was assigned.
+
+The user's temporary artifact-container Blob Reader assignments were both removed in `finally`, and
+authoritative readback returned zero matches. Final inventory remained six existing ARM resources
+and one Foundry agent. No defender, ACR, tool, provisioned throughput, extra model, storage account,
+monitoring resource, broader role, `azd up`, `azd provision`, or destructive cleanup was used.

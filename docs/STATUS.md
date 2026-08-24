@@ -949,6 +949,81 @@ Performed on 2026-08-23 from the repository root. `$python` below was
 
 None.
 
+## Gate 11 — Deploy and verify the attacker Hosted Agent
+
+**State:** Complete on 2026-08-25; attacker runtime acceptance passed and the defender was not
+deployed
+
+### Deployment evidence
+
+- Deployment used clean `main` at
+  `3395dc9767cde89f4f1672c7206ed5af18e2945a`. The index and working tree were clean before
+  packaging and deployment. Source bytes did not change, so the full test suite was not rerun as
+  directed for this final deployment.
+- `& '.\.venv\Scripts\python.exe' scripts/build_hosted_packages.py`: PASS. The audited attacker
+  ZIP contained 19 files, was 79,342 bytes, and had SHA-256
+  `6d33517a9bec715f541b151bfcf8677963f05832d42c777bc95d68a9fcfd1f1a`. Every payload file mapped
+  to clean `HEAD` or deterministic package metadata; forbidden and defender path counts were zero.
+- `azd deploy attacker-hosted -e gate11-attacker --no-prompt --timeout 1200`: PASS with exit code
+  0. It ran once from `2026-08-24T22:16:02.1686444Z` through
+  `2026-08-24T22:17:44.8342651Z` and created only version 3 of
+  `strategy-redteam-attacker`.
+- Version 3 reached `active`. Its endpoint is
+  `https://zcxie-test-5455-resource.services.ai.azure.com/api/projects/zcxie-test-5455/agents/strategy-redteam-attacker/endpoint/protocols/invocations?api-version=v1`.
+  Its platform identity remained `42c5143f-b009-42bf-a417-1fc47e983792`.
+- The downloaded version-3 code ZIP was 80,035 bytes with Azure content SHA-256
+  `f98846a9390577607b4320ae5ea4266815051205a7ffc266e90a05a6317cea30`. Its 19 payload paths,
+  sizes, and content hashes exactly matched the audited deterministic attacker payload. Outer ZIP
+  metadata differed as expected; defender and forbidden path counts were zero.
+
+### Runtime acceptance evidence
+
+- Exactly one version-3 invocation was made for `gate11b-attacker-smoke-003`, with code version
+  `3395dc9767cde89f4f1672c7206ed5af18e2945a`, seed `20260823`, and configured budgets
+  `1/1/1/1`. The request was generated from the committed fixture manifest and
+  `config/example_60_40.yaml`; request SHA-256 was
+  `63dc4e0c8b9d8329343ff26032be1fb9cb86f9b3cdf955cc0060ce662d45f165`.
+- The invocation returned HTTP 200 in 20.7 seconds. Session ID was
+  `224985de71892b8700Mp31Kt6VnCfUlMTEaEpA4gIzJ2NTW4P1`, invocation ID was
+  `inv_c29f7b05904e118700jnuuTFkHsWRDy9UUxj1DYaVW0hF1wS5R`, APIM request ID was
+  `b6e9e94d-78fd-4229-9a0a-b79a9468f147`, and the 6,901-byte response SHA-256 was
+  `4b903992e5b78832bd08a0ba6277443a1f5ac5f60434d6292db706ad18608130`.
+- `AttackerHostedResponse` validation passed. The independently listed and downloaded prefix
+  `strategy-redteam/attacker/gate11b-attacker-smoke-003/` contained exactly the required seven
+  artifacts. Blob lengths matched downloaded lengths, and `verify_run_artifacts()` passed exact
+  membership, indexed SHA-256 values, typed schemas, configuration/dataset/policy provenance,
+  proposal/result alignment, ranking, and report notice. The dataset and manifest SHA-256 values
+  remained `6fa7e4f25f08fa8de56b09b1ba54a29a0f183baa793568ad9b55e870fb772c4d` and
+  `1791b732a491c3c381e2c07ee4b9a724e82a2b0bc4e0718d8e62ed685bc263bf`. The committed publish
+  path constructs returned references from those same create-only uploaded bytes.
+- Application Insights returned 48 correlated records on the first correctly encoded query.
+  Operation `ebf02cf84d6b8f27efa825bbcffc093c` contains the version-3 invocation request, successful
+  `strategy_redteam.attacker` custom span, managed-identity dataset Blob reads, one project-endpoint
+  `/openai/v1/responses` dependency with HTTP 200, artifact Blob creates with HTTP 201, and the
+  final `/invocations` HTTP 200. No correlated exception or failed dependency was present. Optional
+  experimental GenAI tracing was disabled, but the committed required custom/model/Blob evidence
+  is present.
+
+### RBAC, cleanup, and resource delta
+
+- The attacker identity has exactly `Storage Blob Data Reader` on the dataset container, assignment
+  `de0d68ac-8dee-40d2-a944-fe2c0c8338f9`, and `Storage Blob Data Contributor` on the artifact
+  container, assignment `592a3f99-bce9-496e-a733-b0eeabd492c1`. It has no other direct role.
+- Temporary artifact-container Reader assignments
+  `6a24674a-49bb-4054-81fe-af85b6f46643` and
+  `5fde2df6-8436-4f8c-899b-b7f5f9b5b9a6` were deleted in `finally`; authoritative readback found
+  zero remaining matches. The second was a verification-only attempt after a local evidence-script
+  type-comparison error and never obtained data-plane access within its bounded retry.
+- Before/after ARM inventory remained the same six existing resources: the Foundry account and
+  project, Application Insights component and smart-detection action group, Log Analytics
+  workspace, and `strt5455g11` storage account. Foundry inventory contains only
+  `strategy-redteam-attacker`. No defender, ACR, tool, extra model, monitoring role, broader RBAC,
+  or infrastructure resource was created. No destructive cleanup was run.
+
+### Blockers
+
+None. Gate 11 is closed; Gate 12 may begin only when explicitly requested.
+
 ## Later gates
 
 **State:** Pending — not started. Their exact scopes and done conditions must be supplied or approved before work begins.
