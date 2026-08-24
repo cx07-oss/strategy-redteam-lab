@@ -2,52 +2,100 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import shutil
 import sys
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
-APPLICATIONS = ("attacker-hosted", "defender-hosted")
-EXCLUDED_DIRECTORY_NAMES = {
-    ".azure",
-    ".git",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "__pycache__",
-    "artifacts",
-    "dist",
-    "runs",
-}
-EXCLUDED_FILE_SUFFIXES = (".log", ".pyc", ".pyo")
 FIXED_ZIP_TIME = (2026, 8, 23, 0, 0, 0)
+PACKAGE_INIT_BYTES = (
+    b'"""Minimal package marker for an isolated Hosted Agent bundle."""\n'
+)
+FORBIDDEN_ORCHESTRATION_MODULES = frozenset(
+    {"__main__", "cli", "historical", "offline"}
+)
 
 
-def _copy_tree(source: Path, target: Path) -> None:
-    for path in sorted(source.rglob("*")):
-        relative = path.relative_to(source)
-        if any(
-            part in EXCLUDED_DIRECTORY_NAMES or part.lower().endswith(".egg-info")
-            for part in relative.parts
-        ):
+@dataclass(frozen=True)
+class RoleIsolationPolicy:
+    """Files that distinguish one Hosted Agent role from the other."""
+
+    prompt: str
+    excluded_prompt: str
+    excluded_application: str
+
+
+ROLE_ISOLATION_POLICIES = {
+    "attacker-hosted": RoleIsolationPolicy(
+        prompt="attacker.md",
+        excluded_prompt="defender.md",
+        excluded_application="defender-hosted",
+    ),
+    "defender-hosted": RoleIsolationPolicy(
+        prompt="defender.md",
+        excluded_prompt="attacker.md",
+        excluded_application="attacker-hosted",
+    ),
+}
+APPLICATIONS = tuple(ROLE_ISOLATION_POLICIES)
+
+
+def _strategy_redteam_imports(path: Path) -> set[str]:
+    """Return local top-level modules imported by one Python source file."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        names: tuple[str, ...]
+        if isinstance(node, ast.Import):
+            names = tuple(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            names = (node.module,)
+        else:
             continue
-        if path.is_dir():
+        for name in names:
+            if name.startswith("strategy_redteam."):
+                modules.add(name.split(".", maxsplit=2)[1])
+    return modules
+
+
+def required_source_modules(root: Path, application: str) -> tuple[str, ...]:
+    """Resolve the exact shared-module closure required by one Hosted Agent main."""
+    if application not in ROLE_ISOLATION_POLICIES:
+        raise RuntimeError(f"unknown Hosted Agent application: {application}")
+    package_root = root / "src" / "strategy_redteam"
+    pending = list(
+        _strategy_redteam_imports(root / "apps" / application / "main.py")
+    )
+    selected: set[str] = set()
+    while pending:
+        module = pending.pop()
+        if module in selected:
             continue
-        lower_name = path.name.lower()
-        if (
-            lower_name == ".env"
-            or lower_name.startswith(".env.")
-            or lower_name.endswith(EXCLUDED_FILE_SUFFIXES)
-            or "credential" in lower_name
-            or "secret" in lower_name
-        ):
-            continue
-        destination = target / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, destination)
+        source = package_root / f"{module}.py"
+        if not source.is_file():
+            raise RuntimeError(f"required source module is missing: {module}")
+        selected.add(module)
+        pending.extend(_strategy_redteam_imports(source) - selected)
+    forbidden = selected.intersection(FORBIDDEN_ORCHESTRATION_MODULES)
+    if forbidden:
+        names = ", ".join(sorted(forbidden))
+        raise RuntimeError(f"cross-agent orchestration entered package graph: {names}")
+    return tuple(sorted(selected))
+
+
+def _copy_required_sources(root: Path, application: str, target: Path) -> None:
+    """Copy only import-reachable shared modules plus a minimal package marker."""
+    source_root = root / "src" / "strategy_redteam"
+    package_target = target / "strategy_redteam"
+    package_target.mkdir(parents=True)
+    (package_target / "__init__.py").write_bytes(PACKAGE_INIT_BYTES)
+    for module in required_source_modules(root, application):
+        shutil.copyfile(source_root / f"{module}.py", package_target / f"{module}.py")
 
 
 def _manifest(source: Path) -> bytes:
@@ -93,6 +141,7 @@ def build(root: Path) -> tuple[Path, ...]:
     output_root.mkdir(parents=True, exist_ok=True)
     built: list[Path] = []
     for application in APPLICATIONS:
+        policy = ROLE_ISOLATION_POLICIES[application]
         source_app = root / "apps" / application
         with tempfile.TemporaryDirectory(
             prefix=f".{application}-", dir=output_root
@@ -104,13 +153,21 @@ def build(root: Path) -> tuple[Path, ...]:
             (staged / "requirements.txt").write_text(
                 "-r requirements.lock\n", encoding="utf-8", newline="\n"
             )
-            _copy_tree(root / "src", staged / "src")
-            _copy_tree(root / "prompts", staged / "prompts")
+            _copy_required_sources(root, application, staged / "src")
+            (staged / "prompts").mkdir()
+            shutil.copyfile(
+                root / "prompts" / policy.prompt,
+                staged / "prompts" / policy.prompt,
+            )
             (staged / "config").mkdir()
             shutil.copyfile(
                 root / "config" / "attack-policy-v1.yaml",
                 staged / "config" / "attack-policy-v1.yaml",
             )
+            if (staged / "prompts" / policy.excluded_prompt).exists():
+                raise RuntimeError("cross-role prompt entered isolated package")
+            if any(policy.excluded_application in path.parts for path in staged.rglob("*")):
+                raise RuntimeError("cross-role Hosted Agent entry point entered package")
             (staged / "PACKAGE-MANIFEST.json").write_bytes(_manifest(staged))
 
             target = output_root / application

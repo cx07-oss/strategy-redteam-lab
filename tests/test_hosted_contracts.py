@@ -6,6 +6,8 @@ import asyncio
 import hashlib
 import importlib.util
 import json
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -15,7 +17,14 @@ import httpx
 import pytest
 import yaml
 from pydantic import ValidationError
-from scripts.build_hosted_packages import APPLICATIONS, build
+from scripts.build_hosted_packages import (
+    APPLICATIONS,
+    FORBIDDEN_ORCHESTRATION_MODULES,
+    PACKAGE_INIT_BYTES,
+    ROLE_ISOLATION_POLICIES,
+    build,
+    required_source_modules,
+)
 
 from strategy_redteam.data import LocalDatasetStore
 from strategy_redteam.hosted import (
@@ -202,6 +211,7 @@ def test_source_bundles_are_isolated_locked_and_exclude_local_state() -> None:
         "runs",
     }
     for application, zip_path in zip(APPLICATIONS, zip_paths, strict=True):
+        policy = ROLE_ISOLATION_POLICIES[application]
         with zipfile.ZipFile(zip_path) as archive:
             names = set(archive.namelist())
             assert "main.py" in names
@@ -210,6 +220,24 @@ def test_source_bundles_are_isolated_locked_and_exclude_local_state() -> None:
             assert "PACKAGE-MANIFEST.json" in names
             assert "src/strategy_redteam/hosted.py" in names
             assert "src/strategy_redteam/hosted_server.py" in names
+            assert f"prompts/{policy.prompt}" in names
+            assert f"prompts/{policy.excluded_prompt}" not in names
+            assert all(policy.excluded_application not in Path(name).parts for name in names)
+            assert all(
+                f"src/strategy_redteam/{module}.py" not in names
+                for module in FORBIDDEN_ORCHESTRATION_MODULES
+            )
+            expected_sources = {
+                "src/strategy_redteam/__init__.py",
+                *{
+                    f"src/strategy_redteam/{module}.py"
+                    for module in required_source_modules(ROOT, application)
+                },
+            }
+            assert {
+                name for name in names if name.startswith("src/strategy_redteam/")
+            } == expected_sources
+            assert archive.read("src/strategy_redteam/__init__.py") == PACKAGE_INIT_BYTES
             assert all(not disallowed_parts.intersection(Path(name).parts) for name in names)
             assert all(
                 not any(part.lower().endswith(".egg-info") for part in Path(name).parts)
@@ -219,6 +247,15 @@ def test_source_bundles_are_isolated_locked_and_exclude_local_state() -> None:
             assert all(not Path(name).name.startswith(".env.") for name in names)
             assert all("credential" not in Path(name).name.lower() for name in names)
             assert all("secret" not in Path(name).name.lower() for name in names)
+            assert all(
+                marker not in archive.read(name)
+                for name in names
+                for marker in (
+                    b"AccountKey=",
+                    b"SharedAccessSignature=",
+                    b"-----BEGIN PRIVATE KEY-----",
+                )
+            )
             manifest = json.loads(archive.read("PACKAGE-MANIFEST.json"))
             assert set(manifest["files"]) == names - {"PACKAGE-MANIFEST.json"}
             for name, evidence in manifest["files"].items():
@@ -230,11 +267,43 @@ def test_source_bundles_are_isolated_locked_and_exclude_local_state() -> None:
         assert zip_path.name == f"{application}.zip"
 
 
+def test_isolated_packages_import_and_construct_hosts_in_clean_process() -> None:
+    build(ROOT)
+    script = """
+import importlib.util
+import sys
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+root = Path.cwd()
+sys.path.insert(0, str(root / "src"))
+spec = importlib.util.spec_from_file_location("isolated_hosted_main", root / "main.py")
+assert spec is not None and spec.loader is not None
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+assert module.create_host(object()) is not None
+"""
+    for application in APPLICATIONS:
+        package_root = ROOT / "dist" / "hosted" / application
+        result = subprocess.run(
+            [sys.executable, "-I", "-c", script],
+            cwd=package_root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert not any("__pycache__" in path.parts for path in package_root.rglob("*"))
+
+
 def test_source_bundle_excludes_generated_and_sensitive_paths(tmp_path: Path) -> None:
     for application in APPLICATIONS:
         application_root = tmp_path / "apps" / application
         application_root.mkdir(parents=True)
-        (application_root / "main.py").write_text("pass\n", encoding="utf-8")
+        (application_root / "main.py").write_text(
+            "import strategy_redteam.module\n", encoding="utf-8"
+        )
         (application_root / ".agentignore").write_text(
             "*.egg-info/\n", encoding="utf-8"
         )
@@ -243,6 +312,7 @@ def test_source_bundle_excludes_generated_and_sensitive_paths(tmp_path: Path) ->
     )
     (tmp_path / "prompts").mkdir()
     (tmp_path / "prompts" / "attacker.md").write_text("prompt\n", encoding="utf-8")
+    (tmp_path / "prompts" / "defender.md").write_text("prompt\n", encoding="utf-8")
     (tmp_path / "config").mkdir()
     (tmp_path / "config" / "attack-policy-v1.yaml").write_text(
         "schema_version: '1.0'\n", encoding="utf-8"
@@ -278,23 +348,33 @@ def test_source_bundle_excludes_generated_and_sensitive_paths(tmp_path: Path) ->
             names = set(archive.namelist())
             manifest = json.loads(archive.read("PACKAGE-MANIFEST.json"))
         assert "src/strategy_redteam/module.py" in names
+        assert "src/strategy_redteam/__init__.py" in names
         assert names.isdisjoint(forbidden)
         assert set(manifest["files"]).isdisjoint(forbidden)
 
 
 def test_agentignore_excludes_generated_package_metadata() -> None:
     for application in APPLICATIONS:
+        policy = ROLE_ISOLATION_POLICIES[application]
         rules = (ROOT / "apps" / application / ".agentignore").read_text(
             encoding="utf-8"
+        ).splitlines()
+        assert "*.egg-info/" in rules
+        assert ".git/" in rules
+        assert "dist/" in rules
+        assert f"prompts/{policy.excluded_prompt}" in rules
+        assert f"apps/{policy.excluded_application}/" in rules
+        assert f"{policy.excluded_application}/" in rules
+        assert all(
+            f"src/strategy_redteam/{module}.py" in rules
+            for module in FORBIDDEN_ORCHESTRATION_MODULES
         )
-        assert "*.egg-info/" in rules.splitlines()
-        assert ".git/" in rules.splitlines()
-        assert "dist/" in rules.splitlines()
 
 
 def test_unified_azure_yaml_uses_current_source_and_protocol_contract() -> None:
     payload = yaml.safe_load((ROOT / "azure.yaml").read_text(encoding="utf-8"))
     services = payload["services"]
+    assert "hooks" not in payload
     assert services["ai-project"] == {
         "host": "azure.ai.project",
         "endpoint": "${AZURE_EXISTING_FOUNDRY_PROJECT_ENDPOINT}",
@@ -303,6 +383,8 @@ def test_unified_azure_yaml_uses_current_source_and_protocol_contract() -> None:
         service = services[name]
         assert service["host"] == "azure.ai.agent"
         assert service["kind"] == "hosted"
+        assert service["project"] == f"dist/hosted/{name}"
+        assert "hooks" not in service
         assert service["protocols"] == [
             {"protocol": "invocations", "version": "2.0.0"}
         ]

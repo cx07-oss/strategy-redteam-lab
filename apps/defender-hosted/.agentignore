@@ -4,6 +4,13 @@
 .git/
 dist/
 *.egg-info/
+prompts/attacker.md
+apps/attacker-hosted/
+attacker-hosted/
+src/strategy_redteam/__main__.py
+src/strategy_redteam/cli.py
+src/strategy_redteam/historical.py
+src/strategy_redteam/offline.py
 __pycache__/
 .pytest_cache/
 .mypy_cache/
