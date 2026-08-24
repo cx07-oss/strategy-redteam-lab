@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 import pytest
 import yaml
+from openai.lib._pydantic import to_strict_json_schema
 from pydantic import ValidationError
 from scripts.build_hosted_packages import (
     APPLICATIONS,
@@ -26,7 +27,9 @@ from scripts.build_hosted_packages import (
     required_source_modules,
 )
 
+from strategy_redteam import foundry_clients
 from strategy_redteam.data import LocalDatasetStore
+from strategy_redteam.domain import AttackBatch, Symbol
 from strategy_redteam.hosted import (
     ArtifactStoreError,
     AttackerHostedApplication,
@@ -51,6 +54,59 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_STORE = ROOT / "tests" / "fixtures" / "offline-cache"
 FIXTURE_MANIFEST = FIXTURE_STORE / "manifests" / "correlation-break.json"
 CONFIG = ROOT / "config" / "example_60_40.yaml"
+STRICT_RESPONSE_SCHEMA_KEYWORDS = frozenset(
+    {
+        "$defs",
+        "$ref",
+        "additionalProperties",
+        "anyOf",
+        "description",
+        "enum",
+        "items",
+        "properties",
+        "required",
+        "title",
+        "type",
+    }
+)
+
+
+def _schema_keywords(value: object) -> set[str]:
+    if isinstance(value, list):
+        return set().union(*(_schema_keywords(item) for item in value), set())
+    if not isinstance(value, dict):
+        return set()
+    keywords: set[str] = set()
+    for key, item in value.items():
+        keywords.add(key)
+        if key in {"$defs", "properties"} and isinstance(item, dict):
+            for child in item.values():
+                keywords.update(_schema_keywords(child))
+        else:
+            keywords.update(_schema_keywords(item))
+    return keywords
+
+
+def _object_schemas(value: object) -> list[dict[str, object]]:
+    objects: list[dict[str, object]] = []
+    if isinstance(value, list):
+        for item in value:
+            objects.extend(_object_schemas(item))
+    elif isinstance(value, dict):
+        if value.get("type") == "object":
+            objects.append(value)
+        for item in value.values():
+            objects.extend(_object_schemas(item))
+    return objects
+
+
+def _assert_strict_response_schema(schema: dict[str, object]) -> None:
+    assert _schema_keywords(schema) <= STRICT_RESPONSE_SCHEMA_KEYWORDS
+    for object_schema in _object_schemas(schema):
+        properties = object_schema.get("properties")
+        assert isinstance(properties, dict)
+        assert object_schema.get("additionalProperties") is False
+        assert object_schema.get("required") == list(properties)
 
 
 def _load_module(name: str, path: Path) -> ModuleType:
@@ -113,6 +169,89 @@ def _context(tmp_path: Path):
         report_writer=DeterministicOfflineReportClient(),
     )
     return experiment, reference, attacker, defender
+
+
+def test_attack_batch_schema_uses_the_openai_strict_subset() -> None:
+    """The exact transformed model schema cannot regain the failed map path."""
+    domain_schema = AttackBatch.model_json_schema()
+    model_schema = to_strict_json_schema(AttackBatch)
+
+    _assert_strict_response_schema(domain_schema)
+    _assert_strict_response_schema(model_schema)
+    shock_field = model_schema["$defs"]["StressComponent"]["properties"]["shocks"]
+    shock_object = next(
+        option
+        for option in shock_field["anyOf"]
+        if option.get("type") == "object"
+    )
+    symbols = [symbol.value for symbol in Symbol]
+    assert list(shock_object["properties"]) == symbols
+    assert shock_object["required"] == symbols
+    assert shock_object["additionalProperties"] is False
+    assert all(
+        property_schema["anyOf"] == [{"type": "number"}, {"type": "null"}]
+        for property_schema in shock_object["properties"].values()
+    )
+
+
+def test_mocked_foundry_client_sends_the_compatible_response_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The production client supplies AttackBatch through the verified schema path."""
+    batch = AttackBatch.model_validate_json(
+        (ROOT / "tests" / "fixtures" / "attack_batch.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    observed: dict[str, object] = {}
+
+    def fake_foundry_client(**kwargs: object) -> object:
+        observed["client"] = kwargs
+        return object()
+
+    class FakeAgent:
+        def __init__(self, **kwargs: object) -> None:
+            observed["agent"] = kwargs
+
+        async def __aenter__(self) -> FakeAgent:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def run(
+            self,
+            message: str,
+            *,
+            options: dict[str, object],
+        ) -> SimpleNamespace:
+            observed["message"] = message
+            observed["options"] = options
+            return SimpleNamespace(value=batch, text="")
+
+    monkeypatch.setattr(foundry_clients, "FoundryChatClient", fake_foundry_client)
+    monkeypatch.setattr(foundry_clients, "Agent", FakeAgent)
+    client = foundry_clients._FoundryStructuredClient(
+        project_endpoint="https://example.services.ai.azure.com/api/projects/project",
+        model="model-deployment",
+        agent_name="strategy-redteam-attacker",
+        credential=object(),
+    )
+
+    response = client.run(
+        instructions="Return the bounded typed fixture.",
+        message="{}",
+        response_type=AttackBatch,
+        seed=17,
+    )
+
+    options = observed["options"]
+    assert isinstance(options, dict)
+    assert options["response_format"] is AttackBatch
+    assert options["store"] is False
+    assert options["seed"] == 17
+    _assert_strict_response_schema(to_strict_json_schema(options["response_format"]))
+    assert AttackBatch.model_validate_json(response) == batch
 
 
 def test_two_built_hosts_invoke_locally_with_fixed_data_and_fake_models(

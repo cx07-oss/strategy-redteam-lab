@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -24,7 +25,9 @@ from strategy_redteam import (
     StressComponent,
     StressResult,
     StressScenario,
+    Symbol,
 )
+from strategy_redteam.attack import AttackPolicyViolation, load_attack_policy
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 DATA_HASH = "a" * 64
@@ -309,6 +312,44 @@ def test_every_requested_model_round_trips_json_without_loss() -> None:
         assert type(model).model_validate_json(serialized) == model
 
 
+@pytest.mark.parametrize(
+    "shocks",
+    [
+        {"SPY": -0.2, "TLT": -0.1},
+        {"SPY": -0.2},
+        {"TLT": -0.1},
+    ],
+)
+def test_valid_full_and_partial_shock_maps_round_trip(
+    shocks: dict[str, float],
+) -> None:
+    """Runtime contracts retain full and intentionally partial symbol maps."""
+    component = make_component(shocks=shocks)
+
+    restored = StressComponent.model_validate_json(component.model_dump_json())
+
+    assert restored == component
+
+
+def test_nullable_model_shocks_normalize_to_a_valid_partial_attack_batch() -> None:
+    """Required model-facing nulls become omitted runtime dictionary entries."""
+    batch = AttackBatch(
+        experiment_id="experiment-fixture-1",
+        round_number=1,
+        scenarios=(make_scenario(),),
+    )
+    payload = json.loads(batch.model_dump_json())
+    payload["scenarios"][0]["components"][0]["shocks"] = {
+        "SPY": -0.2,
+        "TLT": None,
+    }
+
+    restored = AttackBatch.model_validate_json(json.dumps(payload))
+
+    assert restored.scenarios[0].components[0].shocks == {Symbol.SPY: -0.2}
+    assert AttackBatch.model_validate_json(restored.model_dump_json()) == restored
+
+
 @pytest.mark.parametrize("invalid_number", [float("nan"), float("inf"), float("-inf")])
 def test_non_finite_metrics_are_rejected(invalid_number: float) -> None:
     """Engine evidence never accepts NaN or infinity."""
@@ -460,6 +501,19 @@ def test_unsupported_symbol_is_rejected() -> None:
     """Only SPY and TLT are permitted by the MVP stress contract."""
     with pytest.raises(ValidationError):
         make_component(shocks={"QQQ": -0.1})
+    with pytest.raises(ValidationError):
+        make_component(shocks={"SPY": -0.1, "QQQ": None})
+
+
+def test_domain_valid_but_out_of_policy_shock_is_rejected_without_clamping() -> None:
+    """The committed attack policy still rejects a valid-domain oversized shock."""
+    policy = load_attack_policy(
+        Path(__file__).resolve().parents[1] / "config" / "attack-policy-v1.yaml"
+    )
+    scenario = make_scenario(components=(make_component(shocks={"SPY": -0.9}),))
+
+    with pytest.raises(AttackPolicyViolation, match="outside the policy range"):
+        policy.validate_scenario(scenario)
 
 
 @pytest.mark.parametrize("multiplier", [0.0, -0.1])

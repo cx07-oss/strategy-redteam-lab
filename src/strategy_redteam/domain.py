@@ -8,9 +8,10 @@ paths, URLs, commands, or tool instructions.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from enum import StrEnum
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal, Self, TypeAlias
 
 from pydantic import (
     BaseModel,
@@ -18,8 +19,15 @@ from pydantic import (
     Field,
     StrictBool,
     StringConstraints,
+    WithJsonSchema,
     field_validator,
     model_validator,
+)
+from pydantic.json_schema import (
+    DEFAULT_REF_TEMPLATE,
+    GenerateJsonSchema,
+    JsonSchemaMode,
+    JsonSchemaValue,
 )
 
 MAX_ROUNDS = 3
@@ -70,6 +78,77 @@ class Symbol(StrEnum):
 
     SPY = "SPY"
     TLT = "TLT"
+
+
+def _nullable_symbol_shocks_schema() -> JsonSchemaValue:
+    """Describe a partial symbol map without unsupported dictionary keywords."""
+    symbols = tuple(symbol.value for symbol in Symbol)
+    return {
+        "type": "object",
+        "properties": {
+            symbol: {
+                "anyOf": [
+                    {"type": "number"},
+                    {"type": "null"},
+                ]
+            }
+            for symbol in symbols
+        },
+        "required": list(symbols),
+        "additionalProperties": False,
+    }
+
+
+ShockDictionary: TypeAlias = Annotated[
+    dict[Symbol, LossBoundedFloat],
+    WithJsonSchema(_nullable_symbol_shocks_schema()),
+]
+
+
+_MODEL_OUTPUT_SCHEMA_KEYWORDS = frozenset(
+    {
+        "$defs",
+        "$ref",
+        "additionalProperties",
+        "anyOf",
+        "description",
+        "enum",
+        "items",
+        "properties",
+        "required",
+        "title",
+        "type",
+    }
+)
+
+
+def _strict_model_output_schema(value: object) -> object:
+    """Return the Azure/OpenAI strict subset without weakening runtime models."""
+    if isinstance(value, list):
+        return [_strict_model_output_schema(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    strict: dict[str, object] = {}
+    for key, item in value.items():
+        if key in {"$defs", "properties"} and isinstance(item, dict):
+            strict[key] = {
+                name: _strict_model_output_schema(schema)
+                for name, schema in item.items()
+            }
+        elif key == "const":
+            strict["enum"] = [item]
+        elif key in _MODEL_OUTPUT_SCHEMA_KEYWORDS:
+            strict[key] = _strict_model_output_schema(item)
+
+    if strict.get("type") == "object":
+        properties = strict.get("properties", {})
+        if not isinstance(properties, dict):
+            raise TypeError("object schema properties must be a dictionary")
+        strict["properties"] = properties
+        strict["required"] = list(properties)
+        strict["additionalProperties"] = False
+    return strict
 
 
 class AdjustmentPolicy(StrEnum):
@@ -318,7 +397,7 @@ class StressComponent(ContractModel):
         int,
         Field(strict=True, ge=1, le=MAX_STRESS_DURATION_ROWS),
     ] | None = None
-    shocks: dict[Symbol, LossBoundedFloat] | None = Field(default=None, min_length=1, max_length=2)
+    shocks: ShockDictionary | None = Field(default=None, min_length=1, max_length=2)
     symbols: tuple[Symbol, ...] | None = Field(default=None, min_length=1, max_length=2)
     volatility_multiplier: PositiveFloat | None = None
     target_correlation: Annotated[
@@ -326,6 +405,18 @@ class StressComponent(ContractModel):
         Field(strict=True, gt=-1.0, lt=1.0, allow_inf_nan=False),
     ] | None = None
     transaction_cost_multiplier: PositiveFloat | None = None
+
+    @field_validator("shocks", mode="before")
+    @classmethod
+    def omit_nullable_symbol_shocks(cls, value: object) -> object:
+        """Convert model-facing nulls to omitted known symbols before validation."""
+        if not isinstance(value, Mapping):
+            return value
+        allowed = frozenset(symbol.value for symbol in Symbol)
+        keys = tuple(key.value if isinstance(key, Symbol) else key for key in value)
+        if any(key not in allowed for key in keys):
+            return value
+        return {key: shock for key, shock in value.items() if shock is not None}
 
     @model_validator(mode="after")
     def validate_component_contract(self) -> Self:
@@ -487,6 +578,29 @@ class AttackBatch(ContractModel):
         min_length=1,
         max_length=MAX_CANDIDATES_PER_ROUND,
     )
+
+    @classmethod
+    def model_json_schema(
+        cls,
+        by_alias: bool = True,
+        ref_template: str = DEFAULT_REF_TEMPLATE,
+        schema_generator: type[GenerateJsonSchema] = GenerateJsonSchema,
+        mode: JsonSchemaMode = "validation",
+        *,
+        union_format: Literal["any_of", "primitive_type_array"] = "any_of",
+    ) -> JsonSchemaValue:
+        """Expose only the strict structured-output subset to model clients."""
+        generated = super().model_json_schema(
+            by_alias=by_alias,
+            ref_template=ref_template,
+            schema_generator=schema_generator,
+            mode=mode,
+            union_format=union_format,
+        )
+        schema = _strict_model_output_schema(generated)
+        if not isinstance(schema, dict):
+            raise TypeError("AttackBatch JSON schema must be an object")
+        return schema
 
     @model_validator(mode="after")
     def scenario_ids_must_be_unique(self) -> Self:
