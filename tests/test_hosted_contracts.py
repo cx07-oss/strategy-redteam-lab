@@ -29,7 +29,7 @@ from scripts.build_hosted_packages import (
 
 from strategy_redteam import foundry_clients
 from strategy_redteam.data import LocalDatasetStore
-from strategy_redteam.domain import AttackBatch, Symbol
+from strategy_redteam.domain import AttackBatch, StressComponent, StressFamily, Symbol
 from strategy_redteam.hosted import (
     ArtifactStoreError,
     AttackerHostedApplication,
@@ -109,6 +109,84 @@ def _assert_strict_response_schema(schema: dict[str, object]) -> None:
         assert object_schema.get("required") == list(properties)
 
 
+def _component_variants(schema: dict[str, object]) -> list[dict[str, object]]:
+    definitions = schema["$defs"]
+    assert isinstance(definitions, dict)
+    component_schema = definitions["StressComponent"]
+    assert isinstance(component_schema, dict)
+    variants = component_schema["anyOf"]
+    assert isinstance(variants, list)
+    assert all(isinstance(variant, dict) for variant in variants)
+    return variants
+
+
+def _component_shape_is_accepted(
+    schema: dict[str, object],
+    payload: dict[str, object],
+) -> bool:
+    """Evaluate the closed-object and family-discriminator shape constraints."""
+    for variant in _component_variants(schema):
+        properties = variant.get("properties")
+        required = variant.get("required")
+        if not isinstance(properties, dict) or not isinstance(required, list):
+            continue
+        family_schema = properties.get("family")
+        if not isinstance(family_schema, dict):
+            continue
+        family_values = family_schema.get("enum")
+        if not isinstance(family_values, list) or payload.get("family") not in family_values:
+            continue
+        if not set(required).issubset(payload):
+            continue
+        if variant.get("additionalProperties") is False and set(payload) - set(properties):
+            continue
+        return True
+    return False
+
+
+VALID_COMPONENT_PAYLOADS: tuple[dict[str, object], ...] = (
+    {
+        "schema_version": "1.0",
+        "family": "historical_window",
+        "start_date": "2024-01-02",
+        "end_date": "2024-01-31",
+    },
+    {
+        "schema_version": "1.0",
+        "family": "one_day_gap",
+        "date": "2024-01-15",
+        "shocks": {"SPY": -0.05, "TLT": -0.02},
+    },
+    {
+        "schema_version": "1.0",
+        "family": "sustained_cumulative_shock",
+        "start_date": "2024-01-08",
+        "duration_rows": 5,
+        "shocks": {"SPY": -0.08, "TLT": -0.04},
+    },
+    {
+        "schema_version": "1.0",
+        "family": "volatility_multiplier",
+        "start_date": "2024-01-02",
+        "end_date": "2024-01-31",
+        "symbols": ["SPY", "TLT"],
+        "volatility_multiplier": 1.5,
+    },
+    {
+        "schema_version": "1.0",
+        "family": "correlation_target",
+        "start_date": "2024-01-02",
+        "end_date": "2024-01-31",
+        "target_correlation": 0.5,
+    },
+    {
+        "schema_version": "1.0",
+        "family": "transaction_cost_multiplier",
+        "transaction_cost_multiplier": 2.0,
+    },
+)
+
+
 def _load_module(name: str, path: Path) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
@@ -172,26 +250,109 @@ def _context(tmp_path: Path):
 
 
 def test_attack_batch_schema_uses_the_openai_strict_subset() -> None:
-    """The exact transformed model schema cannot regain the failed map path."""
+    """The exact transformed model schema uses six closed family variants."""
     domain_schema = AttackBatch.model_json_schema()
     model_schema = to_strict_json_schema(AttackBatch)
 
     _assert_strict_response_schema(domain_schema)
     _assert_strict_response_schema(model_schema)
-    shock_field = model_schema["$defs"]["StressComponent"]["properties"]["shocks"]
-    shock_object = next(
-        option
-        for option in shock_field["anyOf"]
-        if option.get("type") == "object"
-    )
+    variants = _component_variants(model_schema)
+    assert len(variants) == len(StressFamily)
+    assert [variant["properties"]["family"]["enum"][0] for variant in variants] == [
+        family.value for family in StressFamily
+    ]
     symbols = [symbol.value for symbol in Symbol]
-    assert list(shock_object["properties"]) == symbols
-    assert shock_object["required"] == symbols
-    assert shock_object["additionalProperties"] is False
-    assert all(
-        property_schema["anyOf"] == [{"type": "number"}, {"type": "null"}]
-        for property_schema in shock_object["properties"].values()
+    shock_variants = [
+        variant for variant in variants if "shocks" in variant["properties"]
+    ]
+    assert len(shock_variants) == 2
+    for variant in shock_variants:
+        shock_object = variant["properties"]["shocks"]
+        assert list(shock_object["properties"]) == symbols
+        assert shock_object["required"] == symbols
+        assert shock_object["additionalProperties"] is False
+        assert all(
+            property_schema["anyOf"] == [{"type": "number"}, {"type": "null"}]
+            for property_schema in shock_object["properties"].values()
+        )
+
+
+def test_version_two_failure_shapes_are_rejected_by_the_outbound_schema() -> None:
+    """The three evidenced mixed/missing component shapes match no schema branch."""
+    schema = to_strict_json_schema(AttackBatch)
+    failed_components: tuple[dict[str, object], ...] = (
+        {
+            "schema_version": "1.0",
+            "family": "volatility_multiplier",
+            "start_date": "2024-02-01",
+            "end_date": "2024-03-29",
+            "volatility_multiplier": 2.5,
+        },
+        {
+            "schema_version": "1.0",
+            "family": "correlation_target",
+            "start_date": "2024-02-01",
+            "end_date": "2024-03-29",
+            "duration_rows": 20,
+            "target_correlation": 0.75,
+        },
+        {
+            "schema_version": "1.0",
+            "family": "sustained_cumulative_shock",
+            "start_date": "2024-02-01",
+            "end_date": "2024-03-29",
+            "duration_rows": 10,
+            "shocks": {"SPY": -0.12, "TLT": -0.08},
+            "symbols": ["SPY", "TLT"],
+        },
     )
+
+    for payload in failed_components:
+        assert not _component_shape_is_accepted(schema, payload)
+        with pytest.raises(ValidationError):
+            StressComponent.model_validate_json(json.dumps(payload))
+
+
+@pytest.mark.parametrize(
+    "payload",
+    VALID_COMPONENT_PAYLOADS,
+    ids=[family.value for family in StressFamily],
+)
+def test_each_component_family_has_one_schema_valid_runtime_round_trip(
+    payload: dict[str, object],
+) -> None:
+    """Every runtime-permitted family retains one exact outbound representation."""
+    schema = to_strict_json_schema(AttackBatch)
+
+    assert _component_shape_is_accepted(schema, payload)
+    component = StressComponent.model_validate_json(json.dumps(payload))
+    assert StressComponent.model_validate_json(component.model_dump_json()) == component
+
+
+@pytest.mark.parametrize(
+    ("payload", "foreign_field", "foreign_value"),
+    (
+        (VALID_COMPONENT_PAYLOADS[0], "shocks", {"SPY": -0.05, "TLT": None}),
+        (VALID_COMPONENT_PAYLOADS[1], "end_date", "2024-01-31"),
+        (VALID_COMPONENT_PAYLOADS[2], "volatility_multiplier", 1.5),
+        (VALID_COMPONENT_PAYLOADS[3], "shocks", {"SPY": -0.05, "TLT": None}),
+        (VALID_COMPONENT_PAYLOADS[4], "duration_rows", 5),
+        (VALID_COMPONENT_PAYLOADS[5], "start_date", "2024-01-02"),
+    ),
+    ids=[family.value for family in StressFamily],
+)
+def test_cross_family_component_fields_are_impossible(
+    payload: dict[str, object],
+    foreign_field: str,
+    foreign_value: object,
+) -> None:
+    """A family cannot acquire numeric meaning declared by another variant."""
+    schema = to_strict_json_schema(AttackBatch)
+    invalid_payload = {**payload, foreign_field: foreign_value}
+
+    assert not _component_shape_is_accepted(schema, invalid_payload)
+    with pytest.raises(ValidationError, match="unexpected fields"):
+        StressComponent.model_validate_json(json.dumps(invalid_payload))
 
 
 def test_mocked_foundry_client_sends_the_compatible_response_format(

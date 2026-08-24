@@ -190,6 +190,88 @@ class StressFamily(StrEnum):
     TRANSACTION_COST_MULTIPLIER = "transaction_cost_multiplier"
 
 
+_STRESS_COMPONENT_FIELDS: dict[StressFamily, tuple[str, ...]] = {
+    StressFamily.HISTORICAL_WINDOW: ("start_date", "end_date"),
+    StressFamily.ONE_DAY_GAP: ("date", "shocks"),
+    StressFamily.SUSTAINED_CUMULATIVE_SHOCK: (
+        "start_date",
+        "duration_rows",
+        "shocks",
+    ),
+    StressFamily.VOLATILITY_MULTIPLIER: (
+        "start_date",
+        "end_date",
+        "symbols",
+        "volatility_multiplier",
+    ),
+    StressFamily.CORRELATION_TARGET: (
+        "start_date",
+        "end_date",
+        "target_correlation",
+    ),
+    StressFamily.TRANSACTION_COST_MULTIPLIER: ("transaction_cost_multiplier",),
+}
+_STRESS_COMPONENT_NUMERIC_FIELDS = frozenset(
+    field_name
+    for family_fields in _STRESS_COMPONENT_FIELDS.values()
+    for field_name in family_fields
+)
+
+
+def _required_output_field_schema(value: object) -> object:
+    """Remove only the runtime model's outer optional-null branch."""
+    if not isinstance(value, dict):
+        raise TypeError("component field schema must be an object")
+    options = value.get("anyOf")
+    if not isinstance(options, list):
+        return value
+    non_null = [
+        option
+        for option in options
+        if not isinstance(option, dict) or option.get("type") != "null"
+    ]
+    if len(non_null) == 1 and len(non_null) != len(options):
+        return non_null[0]
+    if len(non_null) != len(options):
+        return {**value, "anyOf": non_null}
+    return value
+
+
+def _strict_stress_component_output_schema(value: object) -> JsonSchemaValue:
+    """Discriminate every runtime family without changing runtime validation."""
+    if not isinstance(value, dict):
+        raise TypeError("StressComponent schema must be an object")
+    properties = value.get("properties")
+    if not isinstance(properties, dict):
+        raise TypeError("StressComponent schema properties must be a dictionary")
+
+    variants: list[JsonSchemaValue] = []
+    for family, field_names in _STRESS_COMPONENT_FIELDS.items():
+        variant_properties: dict[str, object] = {
+            "schema_version": properties["schema_version"],
+            "family": {"type": "string", "enum": [family.value]},
+        }
+        variant_properties.update(
+            {
+                field_name: _required_output_field_schema(properties[field_name])
+                for field_name in field_names
+            }
+        )
+        variants.append(
+            {
+                "type": "object",
+                "properties": variant_properties,
+                "required": list(variant_properties),
+                "additionalProperties": False,
+            }
+        )
+    return {
+        "title": value.get("title", "StressComponent"),
+        "description": value.get("description", "One numeric stress operation."),
+        "anyOf": variants,
+    }
+
+
 class ResultStatus(StrEnum):
     """Whether the deterministic engine accepted a scenario."""
 
@@ -421,42 +503,12 @@ class StressComponent(ContractModel):
     @model_validator(mode="after")
     def validate_component_contract(self) -> Self:
         """Require exactly the numeric fields defined for the chosen family."""
-        family_fields = {
-            StressFamily.HISTORICAL_WINDOW: {"start_date", "end_date"},
-            StressFamily.ONE_DAY_GAP: {"date", "shocks"},
-            StressFamily.SUSTAINED_CUMULATIVE_SHOCK: {
-                "start_date",
-                "duration_rows",
-                "shocks",
-            },
-            StressFamily.VOLATILITY_MULTIPLIER: {
-                "start_date",
-                "end_date",
-                "symbols",
-                "volatility_multiplier",
-            },
-            StressFamily.CORRELATION_TARGET: {
-                "start_date",
-                "end_date",
-                "target_correlation",
-            },
-            StressFamily.TRANSACTION_COST_MULTIPLIER: {
-                "transaction_cost_multiplier",
-            },
+        required = frozenset(_STRESS_COMPONENT_FIELDS[self.family])
+        provided = {
+            name
+            for name in _STRESS_COMPONENT_NUMERIC_FIELDS
+            if getattr(self, name) is not None
         }
-        numeric_fields = {
-            "start_date",
-            "end_date",
-            "date",
-            "duration_rows",
-            "shocks",
-            "symbols",
-            "volatility_multiplier",
-            "target_correlation",
-            "transaction_cost_multiplier",
-        }
-        required = family_fields[self.family]
-        provided = {name for name in numeric_fields if getattr(self, name) is not None}
         missing = sorted(required - provided)
         unexpected = sorted(provided - required)
         if missing:
@@ -600,6 +652,12 @@ class AttackBatch(ContractModel):
         schema = _strict_model_output_schema(generated)
         if not isinstance(schema, dict):
             raise TypeError("AttackBatch JSON schema must be an object")
+        definitions = schema.get("$defs")
+        if not isinstance(definitions, dict):
+            raise TypeError("AttackBatch JSON schema definitions must be an object")
+        definitions["StressComponent"] = _strict_stress_component_output_schema(
+            definitions.get("StressComponent")
+        )
         return schema
 
     @model_validator(mode="after")
