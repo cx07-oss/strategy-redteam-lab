@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "experiment-fixture-1",
+  "round_number": 1,
+  "scenarios": [
+    {
+      "schema_version": "1.0",
+      "scenario_id": "gap-001",
+      "evaluation_start": "2020-01-02",
+      "evaluation_end": "2020-01-31",
+      "components": [
+        {
+          "schema_version": "1.0",
+          "family": "one_day_gap",
+          "date": "2020-01-15",
+          "shocks": {
+            "SPY": -0.2
+          }
+        }
+      ],
+      "hypothesis": "A discrete equity gap tests the assumed benefit of bond diversification.",
+      "headline": "Equities gap while bonds are unchanged"
+    }
+  ]
+}

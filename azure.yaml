@@ -1,0 +1,79 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: strategy-redteam-hosted
+
+requiredVersions:
+  azd: ">=1.27.1"
+  extensions:
+    azure.ai.agents: ">=1.0.0-beta.8"
+    azure.ai.projects: ">=1.0.0-beta.4"
+
+services:
+  ai-project:
+    host: azure.ai.project
+    endpoint: ${AZURE_EXISTING_FOUNDRY_PROJECT_ENDPOINT}
+
+  attacker-hosted:
+    host: azure.ai.agent
+    uses:
+      - ai-project
+    project: dist/hosted/attacker-hosted
+    kind: hosted
+    name: strategy-redteam-attacker
+    displayName: Strategy Red Team Attacker
+    description: Runs a bounded research-only attack loop over immutable dataset evidence.
+    protocols:
+      - protocol: invocations
+        version: 2.0.0
+    env:
+      AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+      STRATEGY_REDTEAM_DATASET_BACKEND: azure_blob
+      STRATEGY_REDTEAM_ARTIFACT_BACKEND: azure_blob
+      STRATEGY_REDTEAM_ARTIFACT_CONTAINER_URL: ${STRATEGY_REDTEAM_ARTIFACT_CONTAINER_URL}
+    codeConfiguration:
+      runtime: python_3_13
+      entryPoint: main.py
+      dependencyResolution: remote_build
+    container:
+      resources:
+        cpu: "1.0"
+        memory: 2Gi
+    agentCard:
+      description: Produces deterministic stress evidence, not investment advice.
+      version: "1.0"
+      skills:
+        - id: bounded-strategy-stress
+          name: Bounded strategy stress
+          description: Evaluates at most 24 typed stress scenarios and returns the top three.
+
+  defender-hosted:
+    host: azure.ai.agent
+    uses:
+      - ai-project
+    project: dist/hosted/defender-hosted
+    kind: hosted
+    name: strategy-redteam-defender
+    displayName: Strategy Red Team Defender
+    description: Independently reloads data and replays bounded attacker evidence.
+    protocols:
+      - protocol: invocations
+        version: 2.0.0
+    env:
+      AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+      STRATEGY_REDTEAM_DATASET_BACKEND: azure_blob
+      STRATEGY_REDTEAM_ARTIFACT_BACKEND: azure_blob
+      STRATEGY_REDTEAM_ARTIFACT_CONTAINER_URL: ${STRATEGY_REDTEAM_ARTIFACT_CONTAINER_URL}
+    codeConfiguration:
+      runtime: python_3_13
+      entryPoint: main.py
+      dependencyResolution: remote_build
+    container:
+      resources:
+        cpu: "1.0"
+        memory: 2Gi
+    agentCard:
+      description: Replays typed evidence independently and publishes a trusted failure report.
+      version: "1.0"
+      skills:
+        - id: independent-strategy-replay
+          name: Independent strategy replay
+          description: Replays at most three top scenarios and returns defender verdicts.

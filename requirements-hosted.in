@@ -1,0 +1,13 @@
+# Direct runtime inputs for both source-deployed Hosted Agent applications.
+numpy>=1.26
+pandas>=2.1
+pyarrow>=16.1
+PyYAML>=6.0.2
+pydantic>=2.7
+typer>=0.12
+yfinance>=0.2.40
+agent-framework-core==1.13.0
+agent-framework-foundry==1.10.4
+azure-ai-agentserver-invocations==1.0.0
+azure-identity==1.25.3
+azure-storage-blob==12.30.0

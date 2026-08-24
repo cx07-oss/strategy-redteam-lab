@@ -29,11 +29,13 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+.azure/
 *.pem
 *.key
 local.settings.json
 
 # Downloaded/cached market data (small deterministic fixtures remain trackable)
+.data-cache/
 data/cache/
 data/downloads/
 data/raw/

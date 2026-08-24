@@ -85,7 +85,7 @@ The MVP adapter accepts `date`, `SPY`, and `TLT` columns. Dates must match the e
 
 For adjusted price `P[t]`, the asset simple return for market date `t` is `P[t] / P[t-1] - 1`. The portfolio return earned on `t` uses weights fixed at the preceding close: `r_portfolio[t] = sum(weights[t-1] * asset_returns[t])`. Thus information first available at the close of `t` can affect only the return on `t+1` or later.
 
-The built-in strategy chooses target weights of 0.60 SPY and 0.40 TLT at the initial dataset close and at each month-end close. Each choice becomes effective for the next observed market return. The first dataset row therefore earns no portfolio return. The MVP assumes frictionless rebalancing, no fees, no tax, no slippage, and no cash yield; these are report limitations, not implicit claims of realism.
+The built-in strategy chooses target weights of 0.60 SPY and 0.40 TLT at the initial dataset close and at the first observed market close of each new calendar month. This schedule is prefix-invariant: extending a dataset cannot retrospectively label an earlier row as a rebalance decision. Each choice becomes effective for the next observed market return. The first dataset row therefore earns no portfolio return. The MVP assumes frictionless rebalancing, no fees, no tax, no slippage, and no cash yield; these are report limitations, not implicit claims of realism.
 
 External weights use the same one-row lag. A weight stamped with date `t` is information available at that close and first earns the return on the next market row. No adapter may backfill a missing decision.
 

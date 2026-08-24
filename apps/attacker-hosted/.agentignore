@@ -1,0 +1,16 @@
+.env
+.env.*
+.azure/
+.git/
+dist/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+artifacts/
+runs/
+*.log
+*.pyc
+*credential*
+*secret*

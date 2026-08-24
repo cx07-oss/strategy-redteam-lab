@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "dataset_id": "fixture-spy-tlt-v1",
+  "provider": "deterministic-fixture",
+  "source_identifiers": {
+    "SPY": "fixture-spy",
+    "TLT": "fixture-tlt"
+  },
+  "symbols": [
+    "SPY",
+    "TLT"
+  ],
+  "requested_start_date": "2020-01-02",
+  "requested_end_date": "2020-01-31",
+  "start_date": "2020-01-02",
+  "end_date": "2020-01-31",
+  "adjustment_policy": "splits_and_distributions",
+  "calendar_policy": "common observed market dates",
+  "missing_data_policy": "reject",
+  "row_count": 21,
+  "columns": [
+    "date",
+    "SPY",
+    "TLT"
+  ],
+  "retrieved_at": "2026-08-23T00:00:00Z",
+  "media_type": "application/vnd.apache.parquet",
+  "byte_length": 1024,
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
