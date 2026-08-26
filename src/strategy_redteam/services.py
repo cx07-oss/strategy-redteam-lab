@@ -287,6 +287,14 @@ class _ScenarioProposerAdapter:
             )
         except FakeClientExhausted:
             return ()
+        except ApplicationBoundaryError:
+            candidates = (
+                self._invalid_candidate(
+                    round_number, "proposer structured output validation failed"
+                ),
+            )
+            self._candidate_slots_returned += 1
+            return candidates
         if not isinstance(raw, str):
             candidates = (
                 self._invalid_candidate(round_number, "proposer response was not text"),

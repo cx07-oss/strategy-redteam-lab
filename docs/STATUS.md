@@ -1327,7 +1327,7 @@ and model configuration; automated acceptance is network-free and passed.
 
 ## Gate 12E repair — Ollama grammar-compatible date correction
 
-**State:** Complete locally on 2026-08-26; genuine local Ollama smoke run verified.
+**State:** Superseded by the contextual-validity repair below.
 
 ### Root cause and repair
 
@@ -1345,22 +1345,63 @@ and model configuration; automated acceptance is network-free and passed.
 - `python -m ruff check .`: PASS; `All checks passed!`.
 - `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
 
-### Real Ollama smoke evidence
+### Prior Ollama smoke evidence
 
-- A genuine local Ollama attacker → deterministic engine → defender → verification run completed
-  with `status=verified`. It used the immutable fixture dataset hash
+- The local Ollama workflow completed with `status=verified`. It used the immutable fixture dataset hash
   `6fa7e4f25f08fa8de56b09b1ba54a29a0f183baa793568ad9b55e870fb772c4d` and configuration hash
   `5729ebd028baeccc0e50daea8c66b1da84116171319ff8aafbe322000132030e`.
 - The immutable exported telemetry artifact is
   `artifacts/demo/ollama-run-001/demo-telemetry.json`. The smoke configuration deliberately used
   `max_rounds=1`, `max_candidates_per_round=3`, `max_total_scenarios=3`, `top_k=3`, and
   `timeout_seconds=1500`; the separate Ollama HTTP timeout was 600 seconds.
-- `verified_failures=0`: the run validated the real local integration and provenance path, but did
-  not discover a qualifying failure. It is not the final recruiter-facing demo artifact.
+- `verified_failures=0`: the run validated artifact integrity and provenance, but did not discover
+  a qualifying failure. Subsequent telemetry inspection established that the returned batches were
+  context-invalid, so this was not yet a genuine evaluated Ollama attack scenario or the final
+  recruiter-facing demo artifact.
 
 ### Blockers
 
-None.
+Superseded by the contextual-validity repair below.
+
+## Gate 12E follow-up — Ollama AttackBatch contextual validity
+
+**State:** Implemented locally on 2026-08-26; real smoke blocked by unavailable local Ollama.
+
+### Root cause and repair
+
+- The exact authoritative context check compares only `AttackBatch.experiment_id` and
+  `AttackBatch.round_number` against the current `AttackerEvidenceSummary` request. Genuine
+  run-002 returned structurally valid batches that failed that comparison before deterministic
+  evaluation. Its exported telemetry retains the rejection but not the raw returned batch, so it
+  cannot disambiguate which of those two protected fields differed; no other field is compared by
+  this contract.
+- The Ollama-only request now supplies both values as immutable, exact echo fields and validates
+  them within its existing two-call structured-output boundary. A context-invalid first response
+  receives one complete replacement request; a second failure becomes an honest typed rejection.
+  The service-level comparison remains unchanged, and generated scenario values are never altered.
+- Telemetry now records the configured non-secret Ollama model identifier (for example,
+  `qwen3:4b`) for future runs.
+
+### Validation
+
+- `python -m pytest -q tests/test_ollama_clients.py tests/test_model_provider.py tests/test_services.py tests/test_offline.py --basetemp="$pytestTmp"`:
+  PASS; 37 passed in 20.11s. Tests use fake clients only and cover protected-field mismatches,
+  one correction, two-call failure closure, unchanged scenario payloads, provider selection, and a
+  valid Ollama batch reaching engine metrics and chart points.
+- `python -m pytest -q --basetemp="$pytestTmp"`: PASS; 186 passed in 64.84s with 78%
+  branch-aware package coverage and no warnings, skips, expected failures, placeholders, model
+  calls, or network access.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (exit code 0; existing line-ending warnings only).
+
+### Blocker
+
+- This shell has neither a discoverable `ollama` executable nor
+  `STRATEGY_REDTEAM_OLLAMA_*` configuration. No model was downloaded and no run-003 artifact was
+  fabricated. Run the prescribed bounded `max_rounds=1`, `max_candidates_per_round=3`,
+  `max_total_scenarios=3`, `top_k=3` smoke once local Ollama is available, and confirm telemetry
+  has a valid evaluation with a scenario, metrics, and non-empty chart points.
 
 ## Acceptance environment record — fresh pytest base temporary directory
 

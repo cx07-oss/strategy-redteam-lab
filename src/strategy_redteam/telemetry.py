@@ -22,7 +22,11 @@ from strategy_redteam.domain import (
     MetricSet,
     SchemaVersion,
 )
-from strategy_redteam.model_provider import ModelProviderConfiguration, ModelProviderName
+from strategy_redteam.model_provider import (
+    ModelProviderConfiguration,
+    ModelProviderName,
+    configured_model_identifier,
+)
 from strategy_redteam.services import DefenseRun
 
 TELEMETRY_SCHEMA_VERSION: Final = "1.0"
@@ -220,6 +224,7 @@ def build_run_telemetry(
         code_version=experiment.code_version,
         seed=experiment.seed,
         provider=provider_configuration.provider,
+        model_identifier=configured_model_identifier(provider_configuration),
         max_rounds=experiment.max_rounds,
         max_candidates_per_round=experiment.max_candidates_per_round,
         max_total_scenarios=experiment.max_total_scenarios,

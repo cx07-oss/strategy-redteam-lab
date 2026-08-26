@@ -9,13 +9,14 @@ from __future__ import annotations
 import json
 import math
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Protocol, TypeVar, cast
 
 from pydantic import BaseModel, ValidationError
 
 from strategy_redteam.domain import AttackBatch
 from strategy_redteam.services import (
+    ApplicationBoundaryError,
     AttackerEvidenceSummary,
     DefenderEvidenceSummary,
     DefenderNarrativeBatch,
@@ -38,7 +39,7 @@ class OllamaConfigurationError(RuntimeError):
     """Ollama-specific configuration is missing or invalid."""
 
 
-class OllamaProviderError(RuntimeError):
+class OllamaProviderError(ApplicationBoundaryError):
     """A local Ollama request or its structured response failed closed."""
 
 
@@ -130,6 +131,7 @@ class _OllamaStructuredClient:
         instructions: str,
         evidence: BaseModel,
         response_type: type[StructuredResponse],
+        response_validator: Callable[[StructuredResponse], None] | None = None,
     ) -> str:
         schema = response_type.model_json_schema()
         schema_text = json.dumps(schema, ensure_ascii=True, separators=(",", ":"))
@@ -153,7 +155,15 @@ class _OllamaStructuredClient:
                 content = _response_content(response)
                 json.loads(content)
                 validated = response_type.model_validate_json(content)
-            except (TypeError, KeyError, json.JSONDecodeError, ValidationError) as error:
+                if response_validator is not None:
+                    response_validator(validated)
+            except (
+                TypeError,
+                KeyError,
+                ValueError,
+                json.JSONDecodeError,
+                ValidationError,
+            ) as error:
                 if correction:
                     raise OllamaProviderError(
                         f"Ollama returned invalid {response_type.__name__} structured output"
@@ -190,9 +200,19 @@ class OllamaScenarioProposer:
 
     def propose(self, *, prompt: str, evidence_summary: AttackerEvidenceSummary) -> str:
         return self._client.run(
-            instructions=prompt,
+            instructions=(
+                f"{prompt}\n\n"
+                "The following AttackBatch context is immutable request data. Copy these values "
+                "exactly into the top-level response fields; do not invent, alter, omit, or "
+                "derive them: "
+                f"experiment_id={json.dumps(evidence_summary.experiment_id)}, "
+                f"round_number={evidence_summary.round_number}."
+            ),
             evidence=evidence_summary,
             response_type=AttackBatch,
+            response_validator=lambda batch: _validate_attack_batch_context(
+                batch, evidence_summary
+            ),
         )
 
 
@@ -213,3 +233,14 @@ class OllamaReportWriter:
             evidence=evidence_summary,
             response_type=DefenderNarrativeBatch,
         )
+
+
+def _validate_attack_batch_context(
+    batch: AttackBatch, evidence_summary: AttackerEvidenceSummary
+) -> None:
+    """Reject a structurally valid batch whose immutable request context was altered."""
+    if (
+        batch.experiment_id != evidence_summary.experiment_id
+        or batch.round_number != evidence_summary.round_number
+    ):
+        raise ValueError("AttackBatch context did not match request")

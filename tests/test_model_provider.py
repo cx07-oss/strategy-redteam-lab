@@ -79,6 +79,22 @@ def test_ollama_selection_constructs_its_existing_role_contracts(
     assert provider_module.build_report_writer(configuration) is writer
 
 
+def test_ollama_model_identifier_is_available_for_telemetry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("STRATEGY_REDTEAM_OLLAMA_MODEL", "qwen3:4b")
+
+    assert provider_module.configured_model_identifier(
+        provider_module.ModelProviderConfiguration(provider="ollama")
+    ) == "qwen3:4b"
+    assert (
+        provider_module.configured_model_identifier(
+            provider_module.ModelProviderConfiguration(provider="deterministic")
+        )
+        is None
+    )
+
+
 def test_services_continue_to_depend_on_domain_specific_protocols() -> None:
     source = inspect.getsource(__import__("strategy_redteam.services", fromlist=["*"]))
 

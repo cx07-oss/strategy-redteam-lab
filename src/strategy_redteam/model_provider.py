@@ -84,6 +84,15 @@ def _ollama_report_writer() -> ReportWriter:
     return OllamaReportWriter(configuration=ollama_configuration_from_environment())
 
 
+def configured_model_identifier(configuration: ModelProviderConfiguration) -> str | None:
+    """Return the non-secret runtime model identifier for portable provenance."""
+    if configuration.provider is not ModelProviderName.OLLAMA:
+        return None
+    from strategy_redteam.ollama_clients import ollama_configuration_from_environment
+
+    return ollama_configuration_from_environment().model
+
+
 def build_scenario_proposer(
     configuration: ModelProviderConfiguration,
     *,
