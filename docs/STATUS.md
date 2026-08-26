@@ -1403,6 +1403,82 @@ Superseded by the contextual-validity repair below.
   `max_total_scenarios=3`, `top_k=3` smoke once local Ollama is available, and confirm telemetry
   has a valid evaluation with a scenario, metrics, and non-empty chart points.
 
+## Gate 12E diagnostic follow-up — Ollama structured-output classification
+
+**State:** Complete locally on 2026-08-26; no real Ollama smoke was run from this shell.
+
+### Repair
+
+- Local-Ollama failures now carry only a bounded, provider-specific safe diagnostic into the
+  existing typed rejection: `ollama_transport_failure`,
+  `ollama_json_or_schema_validation_failure`, or `ollama_context_validation_failure`.
+  Context failures additionally name only `experiment_id` and/or `round_number`; no raw generated
+  response, exception text, or untrusted scenario content is retained.
+- The two-request maximum is unchanged. A context correction explicitly restates each failed
+  immutable value (`experiment_id MUST equal ...` and/or `round_number MUST equal ...`); a
+  JSON/schema correction retains concise date/schema guidance. A second invalid response fails
+  closed. Service-level context checks and all deterministic numerical behavior are unchanged.
+
+### Validation
+
+- `python -m pytest -q tests/test_ollama_clients.py --basetemp="$pytestTmp"`:
+  PASS; 17 passed in 11.94s.
+- `python -m pytest -q --basetemp="$pytestTmp"`: PASS; 190 passed in 64.94s with 78%
+  branch-aware package coverage and no warnings, skips, expected failures, placeholders, model
+  calls, or network access.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (exit code 0; existing line-ending warnings only).
+
+### Blocker
+
+- Per instruction, no real Ollama run was attempted from this shell because local Ollama is not
+  available here. Run-003 should be re-run in the configured local environment to obtain its safe
+  rejection category or a genuine evaluated scenario.
+
+## Gate 12E repair — deterministic immutable AttackBatch context envelope
+
+**State:** Implemented locally on 2026-08-26; real smoke deferred because Ollama is unavailable
+in this shell.
+
+- Ollama now validates a provider-local scenario payload and the application creates the final
+  authoritative `AttackBatch` from its unchanged `scenarios` plus
+  `AttackerEvidenceSummary.experiment_id` and `.round_number`. Legacy model-emitted envelope
+  fields are tolerated only for compatibility and discarded; they cannot override provenance.
+- Schema/date/scenario failures retain the single correction retry (two total requests). The
+  public `AttackBatch` schema, service-level context check, all numerical behavior, and other
+  providers remain unchanged.
+- `python -m pytest -q tests/test_ollama_clients.py tests/test_model_provider.py --basetemp="$pytestTmp"`:
+  PASS; 21 passed in 10.78s. `ruff`, `mypy`, and `git diff --check` passed.
+- A real smoke was not run here, per instruction; no artifact was fabricated.
+
+## Gate 12E diagnostic — Ollama scenario payload schema failures
+
+**State:** Implemented locally on 2026-08-26; real Ollama run not attempted in this shell.
+
+- When parsed JSON fails Pydantic validation, the Ollama adapter now records at most five safe
+  `path=error_type` items (for example, `scenarios.0.evaluation_start=missing`) with the existing
+  `ollama_json_or_schema_validation_failure` category. It never retains invalid values, raw JSON,
+  prompts, or exception input.
+- The one allowed correction request uses only those schema paths and static guidance: required
+  fields, YYYY-MM-DD dates, allowed literals/enums, or generic schema conformance. A second
+  invalid response still fails closed.
+- Focused local tests: `python -m pytest -q tests/test_ollama_clients.py --basetemp="$pytestTmp"`:
+  PASS; 15 passed in 9.45s. No real Ollama run was performed.
+
+## Gate 12E repair — family-specific Ollama StressComponent schema
+
+**State:** Implemented locally on 2026-08-26; real Ollama smoke not run in this shell.
+
+- The Ollama-only scenario payload now exposes the domain's existing strict family-discriminated
+  `StressComponent` output schema. Each family advertises only its required fields and rejects
+  cross-family fields; canonical runtime validation is unchanged.
+- Ollama instructions now explicitly give the evidence-summary dataset date window and fixed
+  SPY/TLT symbol set, including that repeated symbols are invalid. Invalid dates and symbols remain
+  rejected without rewriting.
+- Focused Ollama tests passed before this schema-only adjustment; `ruff`, `mypy`, and
+  `git diff --check` pass after it. No real run was attempted.
+
 ## Acceptance environment record — fresh pytest base temporary directory
 
 **State:** Recorded on 2026-08-26; documentation-only acceptance update.

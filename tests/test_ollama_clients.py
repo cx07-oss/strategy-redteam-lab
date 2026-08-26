@@ -15,6 +15,7 @@ from strategy_redteam.ollama_clients import (
     OllamaProviderError,
     OllamaReportWriter,
     OllamaScenarioProposer,
+    _OllamaScenarioPayload,
     ollama_configuration_from_environment,
 )
 from strategy_redteam.services import DefenderNarrativeBatch
@@ -49,71 +50,30 @@ def test_scenario_adapter_supplies_schema_and_returns_validated_batch(tmp_path) 
     )
 
     assert AttackBatch.model_validate_json(result) == batch
-    assert client.calls[0]["format"] == AttackBatch.model_json_schema()
+    assert client.calls[0]["format"] == _OllamaScenarioPayload.model_json_schema()
     assert "YYYY-MM-DD" in client.calls[0]["messages"][0]["content"]
-    expected_experiment = f'experiment_id="{context.experiment.experiment_id}"'
-    assert expected_experiment in client.calls[0]["messages"][0]["content"]
-    assert "round_number=1" in client.calls[0]["messages"][0]["content"]
+    prompt = client.calls[0]["messages"][0]["content"]
+    assert "experiment_id and round_number are application-owned" in prompt
     assert client.calls[0]["options"] == {"temperature": 0.0}
 
 
-@pytest.mark.parametrize(
-    ("field", "altered"),
-    [("experiment_id", "wrong-experiment"), ("round_number", 2)],
-)
-def test_context_mismatch_is_retried_once_then_fails_closed(
-    tmp_path, field: str, altered: object
-) -> None:
+def test_model_envelope_cannot_override_authoritative_attack_batch_context(tmp_path) -> None:
     context = _context(tmp_path)
-    payload = _batch(context, _gap(context, "context-invalid", -0.40)).model_dump(mode="json")
-    payload[field] = altered
-
-    class TwoContextInvalidResponses:
-        def __init__(self) -> None:
-            self.calls: list[dict[str, object]] = []
-
-        def chat(self, **kwargs: object) -> object:
-            self.calls.append(kwargs)
-            return _response(__import__("json").dumps(payload))
-
-    client = TwoContextInvalidResponses()
-    proposer = OllamaScenarioProposer(
-        configuration=OllamaConfiguration(model="local-test"), client=client
-    )
-    with pytest.raises(OllamaProviderError, match="invalid AttackBatch"):
-        proposer.propose(prompt="fixed", evidence_summary=_attack_summary(context))
-    assert len(client.calls) == 2
-
-
-def test_context_invalid_response_is_corrected_once_without_changing_scenario(tmp_path) -> None:
-    context = _context(tmp_path)
-    scenario = _gap(context, "context-corrected", -0.40)
-    invalid = _batch(context, scenario).model_dump(mode="json")
-    invalid["experiment_id"] = "wrong-experiment"
-    corrected = _batch(context, scenario)
-
-    class TwoResponses:
-        def __init__(self) -> None:
-            self.calls: list[dict[str, object]] = []
-            self.responses = [
-                _response(__import__("json").dumps(invalid)),
-                _response(corrected.model_dump_json()),
-            ]
-
-        def chat(self, **kwargs: object) -> object:
-            self.calls.append(kwargs)
-            return self.responses.pop(0)
-
-    client = TwoResponses()
+    scenario = _gap(context, "envelope-owned", -0.40)
+    payload = _batch(context, scenario).model_dump(mode="json")
+    payload["experiment_id"] = "wrong-experiment"
+    payload["round_number"] = 2
+    client = FakeOllamaClient(_response(__import__("json").dumps(payload)), [])
     proposer = OllamaScenarioProposer(
         configuration=OllamaConfiguration(model="local-test"), client=client
     )
     returned = AttackBatch.model_validate_json(
         proposer.propose(prompt="fixed", evidence_summary=_attack_summary(context))
     )
-    assert returned == corrected
+    assert returned.experiment_id == context.experiment.experiment_id
+    assert returned.round_number == 1
     assert returned.scenarios[0] == scenario
-    assert len(client.calls) == 2
+    assert len(client.calls) == 1
 
 
 def test_valid_ollama_batch_reaches_deterministic_evaluation_with_chart_points(tmp_path) -> None:
@@ -155,7 +115,7 @@ def test_invalid_structured_output_fails_closed(tmp_path, content: str) -> None:
         client=FakeOllamaClient(_response(content), []),
     )
 
-    with pytest.raises(OllamaProviderError, match="invalid AttackBatch"):
+    with pytest.raises(OllamaProviderError, match="ollama_json_or_schema_validation_failure"):
         proposer.propose(prompt="fixed", evidence_summary=_attack_summary(context))
 
 
@@ -167,7 +127,7 @@ def test_out_of_range_scenario_and_transport_failure_fail_closed(tmp_path) -> No
         configuration=OllamaConfiguration(model="local-test"),
         client=FakeOllamaClient(_response(__import__("json").dumps(invalid)), []),
     )
-    with pytest.raises(OllamaProviderError, match="invalid AttackBatch"):
+    with pytest.raises(OllamaProviderError, match="ollama_json_or_schema_validation_failure"):
         proposer.propose(prompt="fixed", evidence_summary=_attack_summary(context))
 
 
@@ -182,14 +142,14 @@ def test_timestamp_dates_remain_rejected_without_coercion(tmp_path) -> None:
         configuration=OllamaConfiguration(model="local-test"),
         client=FakeOllamaClient(_response(__import__("json").dumps(payload)), []),
     )
-    with pytest.raises(OllamaProviderError, match="invalid AttackBatch"):
+    with pytest.raises(OllamaProviderError, match="ollama_json_or_schema_validation_failure"):
         proposer.propose(prompt="fixed", evidence_summary=_attack_summary(context))
 
     failing = OllamaReportWriter(
         configuration=OllamaConfiguration(model="local-test"),
         client=FakeOllamaClient(TimeoutError("unreachable"), []),
     )
-    with pytest.raises(OllamaProviderError, match="request failed"):
+    with pytest.raises(OllamaProviderError, match="ollama_transport_failure"):
         failing.write(prompt="fixed", evidence_summary=_defender_summary(context))
 
 
@@ -221,8 +181,67 @@ def test_one_correction_retry_uses_the_same_schema_and_then_succeeds(tmp_path) -
         == "retry"
     )
     assert len(client.calls) == 2
-    assert client.calls[0]["format"] == client.calls[1]["format"] == AttackBatch.model_json_schema()
-    assert "previous response failed" in client.calls[1]["messages"][0]["content"]
+    assert (
+        client.calls[0]["format"]
+        == client.calls[1]["format"]
+        == _OllamaScenarioPayload.model_json_schema()
+    )
+    correction = client.calls[1]["messages"][0]["content"]
+    assert "scenarios.0.evaluation_start: required YYYY-MM-DD date" in correction
+
+
+def test_schema_failure_reports_safe_paths_and_uses_targeted_correction(tmp_path) -> None:
+    context = _context(tmp_path)
+    invalid = {"scenarios": [{"evaluation_start": "secret-value"}]}
+    valid = _batch(context, _gap(context, "schema-corrected", -0.40)).model_dump_json()
+
+    class TwoResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+            self.responses = [_response(__import__("json").dumps(invalid)), _response(valid)]
+
+        def chat(self, **kwargs: object) -> object:
+            self.calls.append(kwargs)
+            return self.responses.pop(0)
+
+    client = TwoResponses()
+    result = OllamaScenarioProposer(
+        configuration=OllamaConfiguration(model="local-test"), client=client
+    ).propose(prompt="fixed", evidence_summary=_attack_summary(context))
+
+    assert AttackBatch.model_validate_json(result).scenarios[0].scenario_id == "schema-corrected"
+    correction = client.calls[1]["messages"][0]["content"]
+    assert "scenarios.0.evaluation_start: required YYYY-MM-DD date" in correction
+    assert "scenarios.0.evaluation_end: required YYYY-MM-DD date" in correction
+    assert "secret-value" not in correction
+    assert len(client.calls) == 2
+
+
+def test_second_schema_failure_exposes_at_most_five_safe_diagnostics(tmp_path) -> None:
+    context = _context(tmp_path)
+    invalid = {"scenarios": [{}], "unexpected": "secret-value"}
+
+    class TwoResponses:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def chat(self, **kwargs: object) -> object:
+            self.calls.append(kwargs)
+            return _response(__import__("json").dumps(invalid))
+
+    client = TwoResponses()
+    proposer = OllamaScenarioProposer(
+        configuration=OllamaConfiguration(model="local-test"), client=client
+    )
+    with pytest.raises(
+        OllamaProviderError, match="ollama_json_or_schema_validation_failure"
+    ) as error:
+        proposer.propose(prompt="fixed", evidence_summary=_attack_summary(context))
+    details = str(error.value).split(": ", maxsplit=1)[1].split("; ")
+    assert len(details) == 5
+    assert all("=" in detail for detail in details)
+    assert "secret-value" not in str(error.value)
+    assert len(client.calls) == 2
 
 
 def test_second_invalid_response_fails_closed_after_exactly_two_requests(tmp_path) -> None:
@@ -240,9 +259,34 @@ def test_second_invalid_response_fails_closed_after_exactly_two_requests(tmp_pat
     proposer = OllamaScenarioProposer(
         configuration=OllamaConfiguration(model="local-test"), client=client
     )
-    with pytest.raises(OllamaProviderError, match="invalid AttackBatch"):
+    with pytest.raises(OllamaProviderError, match="ollama_json_or_schema_validation_failure"):
         proposer.propose(prompt="fixed", evidence_summary=_attack_summary(context))
     assert len(client.calls) == 2
+
+
+@pytest.mark.parametrize(
+    ("client", "detail"),
+    [
+        (FakeOllamaClient(_response("{not-json"), []), "ollama_json_or_schema_validation_failure"),
+        (FakeOllamaClient(TimeoutError("secret transport detail"), []), "ollama_transport_failure"),
+    ],
+)
+def test_safe_ollama_failure_categories_reach_rejection_telemetry(
+    tmp_path, client: FakeOllamaClient, detail: str
+) -> None:
+    context = _context(tmp_path)
+    run = _attack(
+        tmp_path,
+        context,
+        OllamaScenarioProposer(
+            configuration=OllamaConfiguration(model="local-test"), client=client
+        ),
+    )
+
+    rejection = run.evaluations[0].result.rejection_detail
+    assert detail in rejection
+    assert "not-json" not in rejection
+    assert "secret transport detail" not in rejection
 
 
 def test_ollama_provider_selection_has_no_fallback(monkeypatch) -> None:

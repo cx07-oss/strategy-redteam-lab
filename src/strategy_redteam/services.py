@@ -82,6 +82,11 @@ MAX_PRIOR_RESULT_SUMMARIES = MAX_TOTAL_SCENARIOS - MAX_CANDIDATES_PER_ROUND
 class ApplicationBoundaryError(Exception):
     """Base error for local model-client application boundaries."""
 
+    @property
+    def safe_rejection_detail(self) -> str:
+        """Return a bounded diagnostic suitable for an artifact; never model content."""
+        return "proposer structured output validation failed"
+
 
 class PromptTemplateError(ApplicationBoundaryError):
     """A fixed external prompt template is missing, invalid, or oversized."""
@@ -287,10 +292,10 @@ class _ScenarioProposerAdapter:
             )
         except FakeClientExhausted:
             return ()
-        except ApplicationBoundaryError:
+        except ApplicationBoundaryError as error:
             candidates = (
                 self._invalid_candidate(
-                    round_number, "proposer structured output validation failed"
+                    round_number, error.safe_rejection_detail
                 ),
             )
             self._candidate_slots_returned += 1
