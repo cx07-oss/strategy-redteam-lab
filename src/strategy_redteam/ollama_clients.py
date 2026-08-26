@@ -22,6 +22,16 @@ from strategy_redteam.services import (
 )
 
 StructuredResponse = TypeVar("StructuredResponse", bound=BaseModel)
+_DATE_ONLY_INSTRUCTION = (
+    "Date fields named evaluation_start and evaluation_end MUST be calendar dates in exactly "
+    'YYYY-MM-DD form. Never emit a time, T00:00:00, timezone, or Z. Valid: "2024-06-15". '
+    'Invalid: "2024-06-15T00:00:00Z". The final JSON must conform exactly to the supplied schema.'
+)
+_CORRECTION_INSTRUCTION = (
+    "Your previous response failed strict schema validation. Return a complete replacement JSON "
+    "object. evaluation_start and evaluation_end must be YYYY-MM-DD only; timestamps, times, "
+    "timezones, and Z suffixes are invalid."
+)
 
 
 class OllamaConfigurationError(RuntimeError):
@@ -94,7 +104,7 @@ def ollama_configuration_from_environment(
 
 def _official_client(configuration: OllamaConfiguration) -> OllamaChatClient:
     try:
-        from ollama import Client  # type: ignore[import-not-found]
+        from ollama import Client
     except ImportError as error:
         raise OllamaConfigurationError(
             "Ollama support requires the optional 'ollama' Python package"
@@ -121,29 +131,36 @@ class _OllamaStructuredClient:
         evidence: BaseModel,
         response_type: type[StructuredResponse],
     ) -> str:
-        try:
-            response = self._client.chat(
-                model=self._configuration.model,
-                messages=(
-                    {"role": "system", "content": instructions},
-                    {"role": "user", "content": evidence.model_dump_json()},
-                ),
-                format=response_type.model_json_schema(),
-                options={"temperature": self._configuration.temperature},
-            )
-        except Exception as error:
-            raise OllamaProviderError("Ollama request failed") from error
-        try:
-            content = _response_content(response)
-            # Parse explicitly for malformed-text errors, then validate from JSON so
-            # Pydantic preserves JSON's typed date/value decoding under strict mode.
-            json.loads(content)
-            validated = response_type.model_validate_json(content)
-        except (TypeError, KeyError, json.JSONDecodeError, ValidationError) as error:
-            raise OllamaProviderError(
-                f"Ollama returned invalid {response_type.__name__} structured output"
-            ) from error
-        return validated.model_dump_json()
+        schema = response_type.model_json_schema()
+        schema_text = json.dumps(schema, ensure_ascii=True, separators=(",", ":"))
+        for correction in (False, True):
+            system = f"{instructions}\n\n{_DATE_ONLY_INSTRUCTION}\nSchema: {schema_text}"
+            if correction:
+                system = f"{system}\n\n{_CORRECTION_INSTRUCTION}"
+            try:
+                response = self._client.chat(
+                    model=self._configuration.model,
+                    messages=(
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": evidence.model_dump_json()},
+                    ),
+                    format=schema,
+                    options={"temperature": self._configuration.temperature},
+                )
+            except Exception as error:
+                raise OllamaProviderError("Ollama request failed") from error
+            try:
+                content = _response_content(response)
+                json.loads(content)
+                validated = response_type.model_validate_json(content)
+            except (TypeError, KeyError, json.JSONDecodeError, ValidationError) as error:
+                if correction:
+                    raise OllamaProviderError(
+                        f"Ollama returned invalid {response_type.__name__} structured output"
+                    ) from error
+                continue
+            return validated.model_dump_json()
+        raise AssertionError("bounded correction loop must return or raise")
 
 
 def _response_content(response: object) -> str:

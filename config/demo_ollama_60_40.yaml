@@ -1,0 +1,168 @@
+schema_version: "1.0"
+experiment_id: offline-60-40-demo
+strategy:
+  schema_version: "1.0"
+  strategy_id: monthly-60-40
+  kind: monthly_60_40
+  symbols:
+    - SPY
+    - TLT
+  target_weights:
+    SPY: 0.60
+    TLT: 0.40
+  rebalance_frequency: month_start
+  execution_lag_rows: 1
+  allow_short_exposure: false
+  allow_leverage: false
+  allow_missing_weights: false
+failure_rules:
+  - schema_version: "1.0"
+    rule_id: drawdown-limit
+    family: maximum_drawdown
+    threshold: 0.12
+    window_rows: null
+  - schema_version: "1.0"
+    rule_id: rolling-loss-limit
+    family: rolling_20_day_loss
+    threshold: 0.08
+    window_rows: 20
+  - schema_version: "1.0"
+    rule_id: volatility-multiple-limit
+    family: realized_volatility_multiple
+    threshold: 1.50
+    window_rows: 20
+attack_policy:
+  schema_version: "1.0"
+  policy_id: offline-correlation-break-v1
+  allowed_families:
+    - one_day_gap
+    - volatility_multiplier
+    - correlation_target
+    - sustained_cumulative_shock
+    - transaction_cost_multiplier
+  numeric_ranges:
+    schema_version: "1.0"
+    one_day_gap_shock:
+      schema_version: "1.0"
+      minimum: -0.15
+      maximum: -0.02
+    sustained_cumulative_shock:
+      schema_version: "1.0"
+      minimum: -0.25
+      maximum: -0.04
+    sustained_duration_rows:
+      schema_version: "1.0"
+      minimum: 5
+      maximum: 20
+    volatility_multiplier:
+      schema_version: "1.0"
+      minimum: 1.25
+      maximum: 3.00
+    target_correlation:
+      schema_version: "1.0"
+      minimum: 0.25
+      maximum: 0.90
+    transaction_cost_multiplier:
+      schema_version: "1.0"
+      minimum: 2.00
+      maximum: 5.00
+  hypotheses:
+    - schema_version: "1.0"
+      hypothesis_family: inflation_correlation_break
+      required_strategy_mechanism: spy_tlt_sleeves
+      component_template:
+        - volatility_multiplier
+        - correlation_target
+        - sustained_cumulative_shock
+      target_correlation:
+        schema_version: "1.0"
+        minimum: 0.25
+        maximum: 0.90
+      correlation_volatility_duration_rows:
+        schema_version: "1.0"
+        minimum: 20
+        maximum: 126
+      volatility_multiplier:
+        schema_version: "1.0"
+        minimum: 1.25
+        maximum: 3.00
+      spy_cumulative_shock:
+        schema_version: "1.0"
+        minimum: -0.25
+        maximum: -0.05
+      tlt_cumulative_shock:
+        schema_version: "1.0"
+        minimum: -0.20
+        maximum: -0.04
+      shock_duration_rows:
+        schema_version: "1.0"
+        minimum: 5
+        maximum: 20
+      minimum_breach_count: 1
+    - schema_version: "1.0"
+      hypothesis_family: rebalance_timing_gap
+      required_strategy_mechanism: fixed_monthly_rebalance
+      component_template:
+        - one_day_gap
+      rebalance_offsets_rows:
+        - -3
+        - -2
+        - -1
+      spy_one_day_gap:
+        schema_version: "1.0"
+        minimum: -0.15
+        maximum: -0.03
+      tlt_one_day_gap:
+        schema_version: "1.0"
+        minimum: -0.12
+        maximum: -0.02
+      minimum_stale_weight_underperformance: 0.0025
+    - schema_version: "1.0"
+      hypothesis_family: volatility_regime_jump
+      required_strategy_mechanism: volatility_sizing
+      component_template:
+        - volatility_multiplier
+      lookback_rows:
+        schema_version: "1.0"
+        minimum: 20
+        maximum: 60
+      volatility_multiplier:
+        schema_version: "1.0"
+        minimum: 1.50
+        maximum: 3.00
+      stress_duration_rows:
+        schema_version: "1.0"
+        minimum: 5
+        maximum: 20
+    - schema_version: "1.0"
+      hypothesis_family: trading_friction_break
+      required_strategy_mechanism: rebalance_turnover
+      component_template:
+        - transaction_cost_multiplier
+      transaction_cost_multiplier:
+        schema_version: "1.0"
+        minimum: 2.00
+        maximum: 5.00
+      minimum_incremental_cost_contribution: 0.005
+      minimum_cost_share_of_absolute_loss: 0.10
+  evidence_condition:
+    schema_version: "1.0"
+    minimum_failure_scenarios: 3
+    minimum_breach_count: 1
+    minimum_maximum_normalized_excess: 0.0
+model_provider:
+  schema_version: "1.0"
+  provider: ollama
+seed: 20260823
+timeout_seconds: 1500.0
+code_version: gate-8-offline
+numeric_tolerance: 0.000000001
+transaction_cost_bps: 0.0
+historical_window_rows:
+  - 20
+  - 60
+  - 126
+max_rounds: 1
+max_candidates_per_round: 3
+max_total_scenarios: 3
+top_k: 3
