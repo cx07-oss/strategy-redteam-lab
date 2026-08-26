@@ -32,6 +32,7 @@ from strategy_redteam.attack import (
     AttackError,
     AttackHypothesisPolicy,
     AttackPolicy,
+    AttackRun,
     InflationCorrelationHypothesisPolicy,
     RebalanceTimingHypothesisPolicy,
     ScenarioEvaluationRecord,
@@ -84,6 +85,7 @@ from strategy_redteam.services import (
     DefenseRun,
 )
 from strategy_redteam.strategy import StrategyError, strategy_from_spec
+from strategy_redteam.telemetry import RunTelemetry, build_run_telemetry
 
 MAX_OFFLINE_CONFIG_BYTES = 65_536
 OFFLINE_RUNNER_VERSION = "offline-runner-1.0"
@@ -95,6 +97,7 @@ OFFLINE_ROOT_ARTIFACT_FILES = frozenset(
         "failure_report.md",
         "offline_run.json",
         "replay_results.jsonl",
+        "telemetry.json",
     }
 )
 OFFLINE_ATTACK_ARTIFACT_FILES = frozenset(
@@ -111,9 +114,7 @@ OFFLINE_ATTACK_ARTIFACT_FILES = frozenset(
         }
     }
 )
-OFFLINE_REQUIRED_ARTIFACT_FILES = (
-    OFFLINE_ROOT_ARTIFACT_FILES | OFFLINE_ATTACK_ARTIFACT_FILES
-)
+OFFLINE_REQUIRED_ARTIFACT_FILES = OFFLINE_ROOT_ARTIFACT_FILES | OFFLINE_ATTACK_ARTIFACT_FILES
 OFFLINE_HASHED_ARTIFACT_FILES = OFFLINE_REQUIRED_ARTIFACT_FILES - {"offline_run.json"}
 
 
@@ -157,9 +158,7 @@ class OfflineExperimentConfig(ContractModel):
         float,
         Field(strict=True, ge=0.0, lt=10_000.0, allow_inf_nan=False),
     ] = 0.0
-    historical_window_rows: tuple[Literal[20], Literal[60], Literal[126]] = (
-        HISTORICAL_WINDOW_ROWS
-    )
+    historical_window_rows: tuple[Literal[20], Literal[60], Literal[126]] = HISTORICAL_WINDOW_ROWS
     max_rounds: Annotated[int, Field(strict=True, ge=1, le=MAX_ROUNDS)] = MAX_ROUNDS
     max_candidates_per_round: Annotated[
         int,
@@ -241,11 +240,7 @@ class OfflineRunArtifact(ContractModel):
         """Require exact membership and one replay for every selected failure."""
         if set(self.artifact_files) != OFFLINE_HASHED_ARTIFACT_FILES:
             raise ValueError("offline index must reference every non-index artifact exactly")
-        if not (
-            self.top_failure_count
-            == self.replay_count
-            == self.verified_failure_count
-        ):
+        if not (self.top_failure_count == self.replay_count == self.verified_failure_count):
             raise ValueError("every selected failure must be replayed and verified")
         return self
 
@@ -281,9 +276,7 @@ def load_offline_config(path: Path) -> OfflineExperimentConfig:
     except OSError as error:
         raise OfflineConfigError(f"cannot read offline experiment config: {path}") from error
     if not content or len(content) > MAX_OFFLINE_CONFIG_BYTES:
-        raise OfflineConfigError(
-            f"offline config must contain 1..{MAX_OFFLINE_CONFIG_BYTES} bytes"
-        )
+        raise OfflineConfigError(f"offline config must contain 1..{MAX_OFFLINE_CONFIG_BYTES} bytes")
     try:
         payload = yaml.load(content.decode("utf-8"), Loader=_UniqueKeyLoader)
     except (UnicodeDecodeError, yaml.YAMLError) as error:
@@ -381,8 +374,7 @@ class DeterministicOfflineScenarioClient:
                 headline=f"Offline {row.hypothesis_family.value} stress candidate",
             )
         components = tuple(
-            self._component(family, ordinal, fraction)
-            for family in runtime_policy.allowed_families
+            self._component(family, ordinal, fraction) for family in runtime_policy.allowed_families
         )
         return StressScenario(
             scenario_id=f"offline-r{round_number:02d}-c{candidate_number:02d}",
@@ -408,9 +400,7 @@ class DeterministicOfflineScenarioClient:
                 len(self.market_dates) - row.shock_duration_rows.minimum - 1,
                 window_start + row.correlation_volatility_duration_rows.maximum - 1,
             )
-            minimum_window_end = (
-                window_start + row.correlation_volatility_duration_rows.minimum - 1
-            )
+            minimum_window_end = window_start + row.correlation_volatility_duration_rows.minimum - 1
             if maximum_window_end < minimum_window_end:
                 raise OfflineConfigError("dataset is too short for inflation search dimensions")
             window_end = min(
@@ -497,8 +487,7 @@ class DeterministicOfflineScenarioClient:
             )
         if isinstance(row, VolatilityRegimeHypothesisPolicy):
             duration = row.stress_duration_rows.minimum + round(
-                (row.stress_duration_rows.maximum - row.stress_duration_rows.minimum)
-                * fraction
+                (row.stress_duration_rows.maximum - row.stress_duration_rows.minimum) * fraction
             )
             return (
                 StressComponent(
@@ -712,9 +701,8 @@ def verify_offline_artifacts(directory: Path) -> OfflineRunArtifact:
         defender = DefenderArtifact.model_validate_json(
             (directory / "defender_verdicts.json").read_bytes()
         )
-        report = FailureReport.model_validate_json(
-            (directory / "failure_report.json").read_bytes()
-        )
+        report = FailureReport.model_validate_json((directory / "failure_report.json").read_bytes())
+        telemetry = RunTelemetry.model_validate_json((directory / "telemetry.json").read_bytes())
     except (OSError, ValidationError) as error:
         raise OfflineArtifactIntegrityError("offline typed artifact validation failed") from error
     if index_bytes != canonical_json_bytes(index):
@@ -758,6 +746,12 @@ def verify_offline_artifacts(directory: Path) -> OfflineRunArtifact:
     if report.config_sha256 != index.config_sha256:
         raise OfflineArtifactIntegrityError("report configuration hash differs")
     if (
+        telemetry.config_sha256 != index.config_sha256
+        or telemetry.dataset_manifest_sha256 != index.dataset_manifest_sha256
+        or telemetry.experiment_id != index.experiment.experiment_id
+    ):
+        raise OfflineArtifactIntegrityError("telemetry provenance differs from the final index")
+    if (
         report.experiment_id != index.experiment.experiment_id
         or report.code_version != index.experiment.code_version
         or report.seed != index.experiment.seed
@@ -765,23 +759,14 @@ def verify_offline_artifacts(directory: Path) -> OfflineRunArtifact:
         raise OfflineArtifactIntegrityError("report experiment provenance differs")
     if report.defender_verdicts != defender.verdicts:
         raise OfflineArtifactIntegrityError("report and defender verdicts differ")
-    if any(
-        verdict.verdict is not DefenderVerdictValue.REPRODUCED
-        for verdict in defender.verdicts
-    ):
+    if any(verdict.verdict is not DefenderVerdictValue.REPRODUCED for verdict in defender.verdicts):
         raise OfflineReplayError("one or more defender verdicts were not reproduced")
 
     replay_ids = tuple(record.result.scenario_id for record in replays)
     report_ids = tuple(result.scenario_id for result in report.verified_results)
     verdict_ids = tuple(verdict.scenario_id for verdict in defender.verdicts)
-    top_failure_ids = tuple(
-        record.result.scenario_id for record in top_failures.failures
-    )
-    if (
-        replay_ids != report_ids
-        or replay_ids != verdict_ids
-        or replay_ids != top_failure_ids
-    ):
+    top_failure_ids = tuple(record.result.scenario_id for record in top_failures.failures)
+    if replay_ids != report_ids or replay_ids != verdict_ids or replay_ids != top_failure_ids:
         raise OfflineArtifactIntegrityError(
             "top failure, replay, report, and verdict IDs do not align"
         )
@@ -795,9 +780,7 @@ def verify_offline_artifacts(directory: Path) -> OfflineRunArtifact:
         ranked_replay = StressResult.model_validate(replay_payload)
         if ranked_replay != reported:
             raise OfflineArtifactIntegrityError("reported result differs from replay evidence")
-    if _all_data_hashes(attack_directory, report, replays) != {
-        index.experiment.data_sha256
-    }:
+    if _all_data_hashes(attack_directory, report, replays) != {index.experiment.data_sha256}:
         raise OfflineArtifactIntegrityError("dataset hash continuity failed")
 
     try:
@@ -827,18 +810,26 @@ def _publish_offline_artifacts(
     staging: Path,
     destination: Path,
     attack_index: ExperimentArtifact,
+    attack_run: AttackRun,
     defense: DefenseRun,
+    provider_configuration: ModelProviderConfiguration,
 ) -> OfflineRunArtifact:
     defender_artifact = DefenderArtifact(
         verdicts=defense.verdicts,
         accepted_assessments=defense.accepted_assessments,
         narrative_rejections=defense.narrative_rejections,
     )
+    telemetry = build_run_telemetry(
+        attack_run=attack_run,
+        defense=defense,
+        provider_configuration=provider_configuration,
+    )
     root_content = {
         "defender_verdicts.json": canonical_json_bytes(defender_artifact),
         "failure_report.json": canonical_json_bytes(defense.report),
         "failure_report.md": defense.markdown.encode("utf-8"),
         "replay_results.jsonl": _json_lines(defense.replay_records),
+        "telemetry.json": telemetry.canonical_json_bytes(),
     }
     for name, content in root_content.items():
         _write_new_file(staging / name, content)
@@ -892,9 +883,7 @@ def run_offline_experiment(
 
     artifact_directory = artifact_directory.resolve()
     if artifact_directory.exists():
-        raise OfflineArtifactError(
-            f"artifact directory already exists: {artifact_directory}"
-        )
+        raise OfflineArtifactError(f"artifact directory already exists: {artifact_directory}")
     artifact_directory.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(
         tempfile.mkdtemp(
@@ -934,17 +923,16 @@ def run_offline_experiment(
             manifest_path=manifest_path,
         )
         if len(defense.verdicts) != len(attack_run.top_failures) or any(
-            verdict.verdict is not DefenderVerdictValue.REPRODUCED
-            for verdict in defense.verdicts
+            verdict.verdict is not DefenderVerdictValue.REPRODUCED for verdict in defense.verdicts
         ):
-            raise OfflineReplayError(
-                "defender did not reproduce every selected attacker failure"
-            )
+            raise OfflineReplayError("defender did not reproduce every selected attacker failure")
         return _publish_offline_artifacts(
             staging=staging,
             destination=artifact_directory,
             attack_index=attack_index,
+            attack_run=attack_run,
             defense=defense,
+            provider_configuration=config.model_provider,
         )
     except (AttackError, ArtifactIntegrityError, ModelProviderConfigurationError) as error:
         raise OfflineRunError(f"offline attack failed: {error}") from error

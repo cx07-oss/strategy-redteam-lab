@@ -79,6 +79,12 @@ from strategy_redteam.data import (
     canonical_symbols,
     canonicalize_provider_data,
 )
+from strategy_redteam.demo import (
+    DEMO_TELEMETRY_FILENAME,
+    DemoExportError,
+    export_verified_demo_telemetry,
+    run_ollama_demo,
+)
 from strategy_redteam.domain import (
     DEFAULT_NUMERIC_TOLERANCE,
     HISTORICAL_WINDOW_ROWS,
@@ -206,12 +212,20 @@ from strategy_redteam.stress import (
     run_stressed_backtest,
     summarize_asset_returns,
 )
+from strategy_redteam.telemetry import (
+    TELEMETRY_SCHEMA_VERSION,
+    RunTelemetry,
+    TelemetryEvent,
+    TelemetryEventType,
+    build_run_telemetry,
+)
 
 __all__ = [
     "ATTACKER_PROMPT_PATH",
     "ATTACK_RUNNER_VERSION",
     "DEFAULT_NUMERIC_TOLERANCE",
     "DEFENDER_PROMPT_PATH",
+    "DEMO_TELEMETRY_FILENAME",
     "HASHED_ARTIFACT_FILES",
     "HISTORICAL_SCANNER_VERSION",
     "HISTORICAL_WINDOW_ROWS",
@@ -233,6 +247,7 @@ __all__ = [
     "RANKING_METHOD",
     "REQUIRED_ARTIFACT_FILES",
     "STRESS_TRANSFORM_VERSION",
+    "TELEMETRY_SCHEMA_VERSION",
     "TOP_K",
     "AdjustmentPolicy",
     "ApplicationBoundaryError",
@@ -279,6 +294,7 @@ __all__ = [
     "DefenderVerdict",
     "DefenderVerdictValue",
     "DefenseRun",
+    "DemoExportError",
     "DeterministicOfflineProposer",
     "DeterministicOfflineReportClient",
     "DeterministicOfflineScenarioClient",
@@ -331,6 +347,7 @@ __all__ = [
     "RequiredStrategyMechanism",
     "ResultStatus",
     "ReturnSummary",
+    "RunTelemetry",
     "ScenarioEvaluationRecord",
     "ScenarioProposer",
     "StopReason",
@@ -352,6 +369,8 @@ __all__ = [
     "StressWindowError",
     "StressedBacktestResult",
     "Symbol",
+    "TelemetryEvent",
+    "TelemetryEventType",
     "TopFailuresArtifact",
     "TradingFrictionHypothesisPolicy",
     "VolatilityRegimeHypothesisPolicy",
@@ -364,6 +383,7 @@ __all__ = [
     "apply_transaction_cost_multiplier",
     "apply_volatility_multiplier",
     "build_report_writer",
+    "build_run_telemetry",
     "build_scenario_proposer",
     "canonical_data_sha256",
     "canonical_json_bytes",
@@ -373,6 +393,7 @@ __all__ = [
     "canonicalize_provider_data",
     "evaluate_failure_rules",
     "evaluate_scenario",
+    "export_verified_demo_telemetry",
     "hash_continuity",
     "load_attack_policy",
     "load_offline_config",
@@ -384,6 +405,7 @@ __all__ = [
     "run_backtest",
     "run_backtest_with_asset_returns",
     "run_offline_experiment",
+    "run_ollama_demo",
     "run_stressed_backtest",
     "scan_historical_failures",
     "strategy_from_spec",

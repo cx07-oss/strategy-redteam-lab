@@ -23,6 +23,7 @@ from strategy_redteam import (
     OfflineArtifactIntegrityError,
     OfflineReplayError,
     OfflineRunArtifact,
+    RunTelemetry,
     ScenarioEvaluationRecord,
     verify_offline_artifacts,
 )
@@ -46,6 +47,7 @@ EXPECTED_ARTIFACTS = frozenset(
         "failure_report.md",
         "offline_run.json",
         "replay_results.jsonl",
+        "telemetry.json",
     }
 )
 
@@ -141,6 +143,18 @@ def test_offline_cli_produces_exact_verified_bundle_and_is_repeatable(
         (first / "defender_verdicts.json").read_bytes()
     )
     replays = _replays(first)
+    telemetry = RunTelemetry.model_validate_json((first / "telemetry.json").read_bytes())
+    assert telemetry.schema_version == "1.0"
+    assert telemetry.dataset_manifest_sha256 == index.dataset_manifest_sha256
+    assert telemetry.baseline_metrics == report.baseline_metrics
+    assert telemetry.evaluations == tuple(
+        ScenarioEvaluationRecord.model_validate_json(line)
+        for line in (first / "attack" / "results.jsonl").read_bytes().splitlines()
+    )
+    assert tuple(event.sequence for event in telemetry.events) == tuple(
+        range(1, len(telemetry.events) + 1)
+    )
+    assert "secret" not in (first / "telemetry.json").read_text(encoding="utf-8").lower()
     assert manifest["sha256"] == index.experiment.data_sha256
     assert attack_index["experiment"]["data_sha256"] == index.experiment.data_sha256
     assert report.data_sha256 == index.experiment.data_sha256

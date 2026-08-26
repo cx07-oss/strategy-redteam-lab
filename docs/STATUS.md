@@ -1191,6 +1191,83 @@ Performed on 2026-08-26 from the repository root using `.venv\\Scripts\\python.e
 The optional real local Ollama smoke test is blocked by the absent local executable
 and model configuration; automated acceptance is network-free and passed.
 
+## Gate 12D — Portable structured run telemetry
+
+**State:** Complete locally on 2026-08-26; full network-free acceptance passed.
+
+### Deliverables
+
+- Added `strategy_redteam.telemetry` schema `1.0`: a provider-neutral, canonical JSON run record
+  containing immutable dataset manifest/hash, config/code/seed provenance, configured bounds,
+  copied deterministic metrics and typed scenario evaluations, defender verdicts, limitations, and
+  an ordered observable event stream.
+- Integrated telemetry at the existing offline orchestration publication boundary. Each verified
+  offline bundle now includes and hashes `telemetry.json`; bundle verification validates its schema
+  and config/dataset/experiment continuity.
+- Numerical values are copied from `AttackRun`, `ScenarioEvaluationRecord`, and `DefenseRun` only;
+  telemetry performs no market calculation. It records only output that crossed typed scenario and
+  narrative validation boundaries. It serializes no prompts, chain-of-thought, SDK response object,
+  stdout/stderr, credentials, headers, connection strings, or environment metadata.
+
+### Validation
+
+- `python -m pytest -q tests/test_offline.py`: PASS; 6 passed.
+- `python -m pytest -q tests/test_offline.py tests/test_attack.py tests/test_services.py tests/test_model_provider.py tests/test_ollama_clients.py`: PASS; 45 passed.
+- The original `python -m pytest -q` failed during unrelated fixture setup because pytest could
+  not scan its default Windows base temporary directory (`WinError 5` on
+  `C:\Users\61450\AppData\Local\Temp\pytest-of-61450`). A repository-local write probe and
+  `python -m pytest -q tests/test_contracts.py --basetemp=.pytest_tmp`: PASS; 50 passed.
+  This is a test-runner environment issue, not a Gate 12D product regression.
+- `python -m pytest -q tests/test_offline.py --basetemp=.pytest_tmp`: PASS; 6 passed.
+- `python -m pytest -q --basetemp=.pytest_tmp`: PASS; 176 passed in 55.79s with 78%
+  branch-aware package coverage and no warnings, skips, expected failures, placeholders, model
+  calls, or network access. `.pytest_tmp/` and temporary captured test output are Git-ignored.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 19 source files`.
+- `git diff --check`: PASS (exit code 0; existing line-ending warnings only).
+
+### Assumptions and blockers
+
+- Existing provider configuration exposes a provider name but not a portable model identifier, so
+  `model_identifier` remains optional and is absent for the current offline integration. Existing
+  OpenTelemetry is unchanged. On Windows, use `--basetemp=.pytest_tmp` for reliable acceptance
+  runs. No blocker.
+
+## Gate 12E — Verified local-agent demo artifact workflow
+
+**State:** Complete locally on 2026-08-26; optional real Ollama smoke run not performed.
+
+### Deliverables
+
+- Added `strategy_redteam.demo` and `redteam demo run`. The command requires an explicit
+  `model_provider.provider: ollama`, executes the existing bounded offline attacker → deterministic
+  engine → defender replay workflow, verifies the run bundle, and writes an immutable canonical
+  `demo-telemetry.json` under the requested demo artifact directory.
+- The exported file is exactly the validated Gate 12D `RunTelemetry` from the genuine completed
+  workflow; it contains no fabricated values or separate presentation metrics. It preserves typed
+  scenarios, deterministic metrics/breach evidence, event ordering, defender verdicts, limitations,
+  and dataset/config/seed/provider provenance already available to the telemetry schema.
+- Added network-free fake/deterministic workflow tests. `README.md` documents the Ollama command;
+  generated `artifacts/` remain ignored.
+
+### Validation
+
+- `python -m pytest -q tests/test_demo.py tests/test_offline.py`: PASS; 8 passed.
+- `python -m pytest -q --basetemp=.pytest_tmp`: PASS; 178 passed in 62.23s with 78%
+  branch-aware package coverage and no warnings, skips, expected failures, placeholders, model
+  calls, or network access.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (exit code 0; existing line-ending warnings only).
+
+### Assumptions and blockers
+
+- The existing Gate 12D telemetry schema does not yet expose daily equity/drawdown series, so a
+  future frontend must not fabricate chart points; this gate exports the genuine scalar and
+  worst-window evidence currently available. `ollama` was absent from PATH and
+  `STRATEGY_REDTEAM_OLLAMA_MODEL` was unset, so no local Ollama executable/model configuration was
+  available, so no real demo artifact was generated and no model was downloaded.
+
 ## Later gates
 
 **State:** Pending — not started. Their exact scopes and done conditions must be supplied or approved before work begins.

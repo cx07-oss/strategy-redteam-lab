@@ -59,3 +59,17 @@ Copy the emitted manifest path into `--dataset` and choose a new output director
 
 The download is an explicit manual network action. Tests use only the fixed local fixture and do
 not assert live market values.
+
+## Verified local-Ollama demo telemetry
+
+Set `model_provider.provider: ollama` in a copy of the experiment YAML and configure the local
+model with `STRATEGY_REDTEAM_OLLAMA_MODEL`. Then run one bounded, immutable demo bundle:
+
+```powershell
+& '.\.venv\Scripts\redteam.exe' demo run --experiment <ollama-experiment.yaml> --dataset tests\fixtures\offline-cache\manifests\correlation-break.json --output artifacts\demo\ollama-run-001
+```
+
+It runs the real attacker, deterministic engine, and independent defender before exporting the
+canonical `artifacts\demo\ollama-run-001\demo-telemetry.json`. The JSON validates as Gate 12D
+`RunTelemetry`; it contains only typed, verified evidence. Ollama proposals are not deterministic;
+the dataset/config hashes, seed, validated parameters, and engine results are recorded.

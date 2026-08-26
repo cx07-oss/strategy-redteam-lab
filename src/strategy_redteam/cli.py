@@ -19,6 +19,7 @@ from strategy_redteam.data import (
     LocalDatasetStore,
     YFinanceDataProvider,
 )
+from strategy_redteam.demo import DemoExportError, run_ollama_demo
 from strategy_redteam.domain import ExperimentSpec
 from strategy_redteam.offline import (
     OfflineRunError,
@@ -29,7 +30,9 @@ from strategy_redteam.strategy import StrategyError, strategy_from_spec
 
 app = typer.Typer(help="Research-only trading-strategy red-team tools.")
 data_app = typer.Typer(help="Download, cache, and validate immutable historical datasets.")
+demo_app = typer.Typer(help="Run and export genuine verified local-Ollama demo telemetry.")
 app.add_typer(data_app, name="data")
+app.add_typer(demo_app, name="demo")
 
 
 class RunMode(StrEnum):
@@ -203,11 +206,7 @@ def run_vertical_slice(
     """Run baseline, bounded attack, top-three replay, and verified reporting."""
     if mode is not RunMode.OFFLINE:  # pragma: no cover - enum rejects other CLI values
         raise typer.BadParameter("only offline mode is available", param_hint="--mode")
-    destination = (
-        output
-        if output is not None
-        else Path("artifacts") / f"{experiment.stem}-offline"
-    )
+    destination = output if output is not None else Path("artifacts") / f"{experiment.stem}-offline"
     try:
         result = run_offline_experiment(
             config_path=experiment,
@@ -228,6 +227,38 @@ def run_vertical_slice(
     typer.echo(f"replayed={result.replay_count}")
     typer.echo(f"verified_failures={result.verified_failure_count}")
     typer.echo("artifacts=" + ",".join(offline_artifact_names()))
+
+
+@demo_app.command("run")
+def run_demo(
+    experiment: Annotated[
+        Path,
+        typer.Option("--experiment", exists=True, dir_okay=False, readable=True, resolve_path=True),
+    ],
+    dataset: Annotated[
+        Path,
+        typer.Option("--dataset", exists=True, dir_okay=False, readable=True, resolve_path=True),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("--output", file_okay=False, resolve_path=True),
+    ],
+) -> None:
+    """Run one bounded local-Ollama demo and export only verified telemetry."""
+    try:
+        result, telemetry = run_ollama_demo(
+            config_path=experiment,
+            manifest_path=dataset,
+            output_directory=output,
+        )
+    except (DemoExportError, OfflineRunError, OSError) as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo("status=verified")
+    typer.echo(f"demo_telemetry={(output / 'demo-telemetry.json').resolve()}")
+    typer.echo(f"data_sha256={telemetry.dataset_manifest.sha256}")
+    typer.echo(f"config_sha256={telemetry.config_sha256}")
+    typer.echo(f"verified_failures={result.verified_failure_count}")
 
 
 if __name__ == "__main__":  # pragma: no cover - console entry point is preferred

@@ -13,6 +13,8 @@ env/
 
 # Test, type, lint, and coverage caches
 .pytest_cache/
+.pytest_tmp/
+.pytest_results/
 .mypy_cache/
 .ruff_cache/
 .coverage
