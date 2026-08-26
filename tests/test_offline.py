@@ -71,9 +71,7 @@ def _invoke_run(output: Path, config: Path = CONFIG_PATH, dataset: Path = FIXTUR
 
 def _artifact_names(directory: Path) -> frozenset[str]:
     return frozenset(
-        path.relative_to(directory).as_posix()
-        for path in directory.rglob("*")
-        if path.is_file()
+        path.relative_to(directory).as_posix() for path in directory.rglob("*") if path.is_file()
     )
 
 
@@ -139,9 +137,7 @@ def test_offline_cli_produces_exact_verified_bundle_and_is_repeatable(
     manifest = json.loads((first / "attack" / "dataset_manifest.json").read_text())
     attack_index = json.loads((first / "attack" / "experiment.json").read_text())
     report = FailureReport.model_validate_json((first / "failure_report.json").read_bytes())
-    defender = DefenderArtifact.model_validate_json(
-        (first / "defender_verdicts.json").read_bytes()
-    )
+    defender = DefenderArtifact.model_validate_json((first / "defender_verdicts.json").read_bytes())
     replays = _replays(first)
     telemetry = RunTelemetry.model_validate_json((first / "telemetry.json").read_bytes())
     assert telemetry.schema_version == "1.0"
@@ -158,10 +154,17 @@ def test_offline_cli_produces_exact_verified_bundle_and_is_repeatable(
     assert manifest["sha256"] == index.experiment.data_sha256
     assert attack_index["experiment"]["data_sha256"] == index.experiment.data_sha256
     assert report.data_sha256 == index.experiment.data_sha256
-    assert {item.result.data_sha256 for item in replays} == {
-        index.experiment.data_sha256
-    }
+    assert {item.result.data_sha256 for item in replays} == {index.experiment.data_sha256}
     for replay in replays:
+        assert replay.chart_points
+        assert replay.chart_points[0].date.isoformat() == "2024-01-02"
+        assert replay.chart_points[-1].date > replay.chart_points[0].date
+        assert all(
+            point.baseline_equity > 0.0 and point.stressed_equity > 0.0
+            for point in replay.chart_points
+        )
+        breach_dates = {breach.onset_date for breach in replay.result.breaches}
+        assert breach_dates.issubset({point.date for point in replay.chart_points})
         volatility = replay.component_summaries[0]
         correlation = replay.component_summaries[1]
         assert all(

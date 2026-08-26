@@ -1235,7 +1235,7 @@ and model configuration; automated acceptance is network-free and passed.
 
 ## Gate 12E — Verified local-agent demo artifact workflow
 
-**State:** Complete locally on 2026-08-26; optional real Ollama smoke run not performed.
+**State:** Complete locally on 2026-08-26; one genuine local Ollama smoke run verified.
 
 ### Deliverables
 
@@ -1262,11 +1262,127 @@ and model configuration; automated acceptance is network-free and passed.
 
 ### Assumptions and blockers
 
-- The existing Gate 12D telemetry schema does not yet expose daily equity/drawdown series, so a
-  future frontend must not fabricate chart points; this gate exports the genuine scalar and
-  worst-window evidence currently available. `ollama` was absent from PATH and
-  `STRATEGY_REDTEAM_OLLAMA_MODEL` was unset, so no local Ollama executable/model configuration was
-  available, so no real demo artifact was generated and no model was downloaded.
+- The smoke run is an integration check, not the final recruiter-facing demo artifact.
+
+## Gate 12F — Chart-ready deterministic performance evidence
+
+**State:** Complete locally on 2026-08-26; network-free acceptance passed.
+
+### Deliverables
+
+- The deterministic `BacktestResult` already retained the authoritative daily equity curve. Added
+  its existing engine-calculated drawdown series as a behaviour-preserving result field; no
+  portfolio, return, drawdown, or stress formula changed.
+- Added bounded typed `PerformanceChartPoint` evidence to each valid scenario evaluation. Each
+  ordered point copies the engine's baseline equity, stressed equity, and stressed drawdown for the
+  same market date. Gate 12D telemetry and Gate 12E demo export therefore include genuine
+  chart-ready series and retain breach-onset dates present in the same series.
+- No downsampling is applied: the fixed daily fixture paths remain far below the 10,000-point typed
+  cap, and full engine ordering is preserved. Artifact hashes cover the augmented JSONL and
+  telemetry content, so bundle verification detects chart-data tampering.
+
+### Validation
+
+- `python -m pytest -q tests/test_offline.py tests/test_attack.py`: PASS; 22 passed.
+- `python -m pytest -q --basetemp=.pytest_tmp`: PASS; 178 passed in 63.51s with 78%
+  branch-aware package coverage and no warnings, skips, expected failures, placeholders, model
+  calls, or network access.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (exit code 0; existing line-ending warnings only).
+
+### Assumptions and blockers
+
+- Chart points are copied only after deterministic engine evaluation; invalid/rejected scenarios
+  carry no chart data. Existing provider and model boundaries remain unchanged. No blocker.
+
+## Gate 12E repair — Ollama date-only structured output
+
+**State:** Complete locally on 2026-08-26; superseded by the verified smoke record below.
+
+### Root cause and repair
+
+- The strict authoritative `AttackBatch` contract correctly rejected Ollama timestamp strings for
+  `evaluation_start` and `evaluation_end`. Its generated JSON Schema exposed those fields only as
+  `type: string`, without a date format or pattern.
+- The Ollama-only request path now appends explicit date-only instructions and sends a deep-copied
+  Pydantic schema with `^\\d{4}-\\d{2}-\\d{2}$` patterns on only those two calendar fields. The
+  authoritative Pydantic/domain schema is unchanged. Returned text still receives one strict
+  `model_validate_json` validation with no timestamp coercion or retry.
+
+### Validation
+
+- `python -m pytest -q tests/test_ollama_clients.py tests/test_model_provider.py --basetemp=.pytest_tmp`:
+  PASS; 14 passed.
+- `python -m pytest -q --basetemp=.pytest_tmp`: PASS; 179 passed in 65.68s with 78%
+  branch-aware package coverage and no warnings, skips, expected failures, placeholders, model
+  calls, or network access.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (exit code 0; existing line-ending warnings only).
+
+### Blockers
+
+- Superseded by the verified local Ollama smoke record below.
+
+## Gate 12E repair — Ollama grammar-compatible date correction
+
+**State:** Complete locally on 2026-08-26; genuine local Ollama smoke run verified.
+
+### Root cause and repair
+
+- The provider-local date regex schema mutation caused Ollama's grammar parser to reject the
+  request before generation. The adapter again sends the unmodified `response_type.model_json_schema()`
+  through `format`, and grounds the model with that same schema plus explicit date-only examples.
+- The strict Pydantic contract is unchanged. If the first returned payload fails JSON/schema
+  validation, the adapter requests one complete replacement with concise date guidance. A second
+  invalid payload fails closed; no response is transformed or coerced.
+
+### Validation
+
+- `python -m pytest -q tests/test_ollama_clients.py tests/test_model_provider.py --basetemp=.pytest_tmp`:
+  PASS; 16 passed.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+
+### Real Ollama smoke evidence
+
+- A genuine local Ollama attacker → deterministic engine → defender → verification run completed
+  with `status=verified`. It used the immutable fixture dataset hash
+  `6fa7e4f25f08fa8de56b09b1ba54a29a0f183baa793568ad9b55e870fb772c4d` and configuration hash
+  `5729ebd028baeccc0e50daea8c66b1da84116171319ff8aafbe322000132030e`.
+- The immutable exported telemetry artifact is
+  `artifacts/demo/ollama-run-001/demo-telemetry.json`. The smoke configuration deliberately used
+  `max_rounds=1`, `max_candidates_per_round=3`, `max_total_scenarios=3`, `top_k=3`, and
+  `timeout_seconds=1500`; the separate Ollama HTTP timeout was 600 seconds.
+- `verified_failures=0`: the run validated the real local integration and provenance path, but did
+  not discover a qualifying failure. It is not the final recruiter-facing demo artifact.
+
+### Blockers
+
+None.
+
+## Acceptance environment record — fresh pytest base temporary directory
+
+**State:** Recorded on 2026-08-26; documentation-only acceptance update.
+
+- The repository-local persistent `.pytest_tmp` directory is locked by Windows/OneDrive. Reusing it
+  causes pytest setup errors with `WinError 5`, and it could not be removed with PowerShell
+  `Remove-Item -Recurse -Force`. This is an environment/filesystem issue, not a product
+  regression. It was not repaired or deleted during this update.
+- Full acceptance therefore used a new unique temporary directory outside the repository for the
+  run:
+
+  ```powershell
+  $pytestTmp = Join-Path $env:TEMP ("strategy-redteam-" + [guid]::NewGuid().ToString("N"))
+  python -m pytest -q --basetemp="$pytestTmp"
+  ```
+
+- Final suite result supplied for this record: **PASS; 181 passed.** No duration or additional
+  pytest summary text was supplied, so none is asserted here.
+- Current checks: `python -m ruff check .` — PASS; `All checks passed!`.
+  `python -m mypy src` — PASS; `Success: no issues found in 20 source files`.
+  `git diff --check` — PASS (exit code 0; existing line-ending warnings only).
 
 ## Later gates
 

@@ -181,10 +181,7 @@ class AttackNumericRanges(ContractModel):
             raise ValueError("duration policy exceeds MAX_STRESS_DURATION_ROWS")
         if self.volatility_multiplier.minimum <= 0.0:
             raise ValueError("volatility policy must remain strictly positive")
-        if not (
-            -1.0 < self.target_correlation.minimum
-            <= self.target_correlation.maximum < 1.0
-        ):
+        if not (-1.0 < self.target_correlation.minimum <= self.target_correlation.maximum < 1.0):
             raise ValueError("correlation policy must remain strictly inside (-1, 1)")
         if self.transaction_cost_multiplier.minimum <= 0.0:
             raise ValueError("transaction-cost policy must remain strictly positive")
@@ -239,12 +236,12 @@ class InflationCorrelationHypothesisPolicy(ContractModel):
     """Structured search dimensions for the diversification-break hypothesis."""
 
     schema_version: SchemaVersion = "1.0"
-    hypothesis_family: Literal[
+    hypothesis_family: Literal[AttackHypothesisFamily.INFLATION_CORRELATION_BREAK] = (
         AttackHypothesisFamily.INFLATION_CORRELATION_BREAK
-    ] = AttackHypothesisFamily.INFLATION_CORRELATION_BREAK
-    required_strategy_mechanism: Literal[
+    )
+    required_strategy_mechanism: Literal[RequiredStrategyMechanism.SPY_TLT_SLEEVES] = (
         RequiredStrategyMechanism.SPY_TLT_SLEEVES
-    ] = RequiredStrategyMechanism.SPY_TLT_SLEEVES
+    )
     component_template: tuple[StressFamily, ...] = Field(min_length=3, max_length=3)
     target_correlation: NumericRange
     correlation_volatility_duration_rows: IntegerPolicyRange
@@ -296,16 +293,16 @@ class RebalanceTimingHypothesisPolicy(ContractModel):
     """Structured search dimensions for the pre-rebalance gap hypothesis."""
 
     schema_version: SchemaVersion = "1.0"
-    hypothesis_family: Literal[
+    hypothesis_family: Literal[AttackHypothesisFamily.REBALANCE_TIMING_GAP] = (
         AttackHypothesisFamily.REBALANCE_TIMING_GAP
-    ] = AttackHypothesisFamily.REBALANCE_TIMING_GAP
-    required_strategy_mechanism: Literal[
+    )
+    required_strategy_mechanism: Literal[RequiredStrategyMechanism.FIXED_MONTHLY_REBALANCE] = (
         RequiredStrategyMechanism.FIXED_MONTHLY_REBALANCE
-    ] = RequiredStrategyMechanism.FIXED_MONTHLY_REBALANCE
+    )
     component_template: tuple[StressFamily, ...] = Field(min_length=1, max_length=1)
-    rebalance_offsets_rows: tuple[
-        Annotated[int, Field(strict=True)], ...
-    ] = Field(min_length=3, max_length=3)
+    rebalance_offsets_rows: tuple[Annotated[int, Field(strict=True)], ...] = Field(
+        min_length=3, max_length=3
+    )
     spy_one_day_gap: NumericRange
     tlt_one_day_gap: NumericRange
     minimum_stale_weight_underperformance: FiniteFloat = 0.0025
@@ -327,12 +324,12 @@ class VolatilityRegimeHypothesisPolicy(ContractModel):
     """Search dimensions retained only for strategies proving volatility sizing."""
 
     schema_version: SchemaVersion = "1.0"
-    hypothesis_family: Literal[
+    hypothesis_family: Literal[AttackHypothesisFamily.VOLATILITY_REGIME_JUMP] = (
         AttackHypothesisFamily.VOLATILITY_REGIME_JUMP
-    ] = AttackHypothesisFamily.VOLATILITY_REGIME_JUMP
-    required_strategy_mechanism: Literal[
+    )
+    required_strategy_mechanism: Literal[RequiredStrategyMechanism.VOLATILITY_SIZING] = (
         RequiredStrategyMechanism.VOLATILITY_SIZING
-    ] = RequiredStrategyMechanism.VOLATILITY_SIZING
+    )
     component_template: tuple[StressFamily, ...] = Field(min_length=1, max_length=1)
     lookback_rows: IntegerPolicyRange
     volatility_multiplier: NumericRange
@@ -357,12 +354,12 @@ class TradingFrictionHypothesisPolicy(ContractModel):
     """Structured search dimensions and materiality boundaries for friction."""
 
     schema_version: SchemaVersion = "1.0"
-    hypothesis_family: Literal[
+    hypothesis_family: Literal[AttackHypothesisFamily.TRADING_FRICTION_BREAK] = (
         AttackHypothesisFamily.TRADING_FRICTION_BREAK
-    ] = AttackHypothesisFamily.TRADING_FRICTION_BREAK
-    required_strategy_mechanism: Literal[
+    )
+    required_strategy_mechanism: Literal[RequiredStrategyMechanism.REBALANCE_TURNOVER] = (
         RequiredStrategyMechanism.REBALANCE_TURNOVER
-    ] = RequiredStrategyMechanism.REBALANCE_TURNOVER
+    )
     component_template: tuple[StressFamily, ...] = Field(min_length=1, max_length=1)
     transaction_cost_multiplier: NumericRange
     minimum_incremental_cost_contribution: FiniteFloat = 0.005
@@ -418,8 +415,7 @@ class EvidenceCondition(ContractModel):
         return (
             result.status is ResultStatus.VALID
             and result.breach_count >= self.minimum_breach_count
-            and result.maximum_normalized_excess
-            >= self.minimum_maximum_normalized_excess
+            and result.maximum_normalized_excess >= self.minimum_maximum_normalized_excess
         )
 
 
@@ -462,8 +458,7 @@ class AttackPolicy(ContractModel):
                     (ranges.sustained_cumulative_shock, row.tlt_cumulative_shock),
                 )
                 if not all(
-                    machine.contains(specific.minimum)
-                    and machine.contains(specific.maximum)
+                    machine.contains(specific.minimum) and machine.contains(specific.maximum)
                     for machine, specific in checks
                 ):
                     raise ValueError("inflation hypothesis broadens the machine numeric envelope")
@@ -502,9 +497,7 @@ class AttackPolicy(ContractModel):
         """Remove policy rows whose required mechanism is absent from StrategySpec."""
         if not self.hypotheses:
             return self
-        active = tuple(
-            row for row in self.hypotheses if _strategy_supports(row, strategy_spec)
-        )
+        active = tuple(row for row in self.hypotheses if _strategy_supports(row, strategy_spec))
         return self.model_copy(update={"hypotheses": active})
 
     def hypothesis_for_scenario(
@@ -545,9 +538,7 @@ class AttackPolicy(ContractModel):
             elif component.family is StressFamily.VOLATILITY_MULTIPLIER:
                 value = component.volatility_multiplier
                 if value is None or not ranges.volatility_multiplier.contains(value):
-                    raise AttackPolicyViolation(
-                        "volatility_multiplier is outside the policy range"
-                    )
+                    raise AttackPolicyViolation("volatility_multiplier is outside the policy range")
             elif component.family is StressFamily.CORRELATION_TARGET:
                 value = component.target_correlation
                 if value is None or not ranges.target_correlation.contains(value):
@@ -641,9 +632,7 @@ class AttackPolicy(ContractModel):
         else:
             multiplier = scenario.components[0].transaction_cost_multiplier
             if multiplier is None or not row.transaction_cost_multiplier.contains(multiplier):
-                raise AttackPolicyViolation(
-                    "friction multiplier is outside its hypothesis range"
-                )
+                raise AttackPolicyViolation("friction multiplier is outside its hypothesis range")
 
     @staticmethod
     def _validate_hypothesis_context(
@@ -877,8 +866,7 @@ class DeterministicOfflineProposer:
         if isinstance(row, InflationCorrelationHypothesisPolicy):
             available = len(self.market_dates)
             minimum_required = (
-                row.correlation_volatility_duration_rows.minimum
-                + row.shock_duration_rows.minimum
+                row.correlation_volatility_duration_rows.minimum + row.shock_duration_rows.minimum
             )
             if available < minimum_required:
                 raise OfflineProposalError("dataset is too short for the inflation hypothesis")
@@ -1187,6 +1175,16 @@ class WorstWindowEvidence(ContractModel):
         return self
 
 
+class PerformanceChartPoint(ContractModel):
+    """One engine-produced daily portfolio point for a validated stress scenario."""
+
+    schema_version: SchemaVersion = "1.0"
+    date: date
+    baseline_equity: FiniteFloat
+    stressed_equity: FiniteFloat
+    stressed_drawdown: NonNegativeFloat
+
+
 class ScenarioEvaluationRecord(ContractModel):
     """One typed rejection or complete deterministic scenario evidence record."""
 
@@ -1203,6 +1201,7 @@ class ScenarioEvaluationRecord(ContractModel):
     pre_transform_summary: ReturnSummary | None = None
     post_transform_summary: ReturnSummary | None = None
     worst_windows: tuple[WorstWindowEvidence, ...] = Field(default=(), max_length=3)
+    chart_points: tuple[PerformanceChartPoint, ...] = Field(default=(), max_length=10_000)
 
     @model_validator(mode="after")
     def validate_evidence_shape(self) -> Self:
@@ -1223,6 +1222,7 @@ class ScenarioEvaluationRecord(ContractModel):
                 self.pre_transform_summary is not None,
                 self.post_transform_summary is not None,
                 bool(self.worst_windows),
+                bool(self.chart_points),
             )
         ):
             raise ValueError("rejected evaluation cannot contain numerical evidence")
@@ -1436,9 +1436,7 @@ def _linked_window_evidence(
     if not isinstance(start_position, int) or not isinstance(end_position, int):
         raise AttackValidationError("breach windows must resolve to unique market rows")
     first_position = (
-        start_position + 1
-        if breach.family.value == "maximum_drawdown"
-        else start_position
+        start_position + 1 if breach.family.value == "maximum_drawdown" else start_position
     )
     if first_position > end_position:
         raise AttackValidationError("breach worst window contains no earned return")
@@ -1554,8 +1552,16 @@ def _evaluate_scenario(
             worst_portfolio_loss=worst_loss,
         )
         windows = tuple(
-            _linked_window_evidence(stressed, breach_index)
-            for breach_index in range(len(breaches))
+            _linked_window_evidence(stressed, breach_index) for breach_index in range(len(breaches))
+        )
+        chart_points = tuple(
+            PerformanceChartPoint(
+                date=timestamp.date(),
+                baseline_equity=float(baseline.equity_curve.loc[timestamp]),
+                stressed_equity=float(stressed.equity_curve.loc[timestamp]),
+                stressed_drawdown=float(stressed.drawdown_curve.loc[timestamp]),
+            )
+            for timestamp in baseline.equity_curve.index
         )
         return ScenarioEvaluationRecord(
             round_number=round_number,
@@ -1567,6 +1573,7 @@ def _evaluate_scenario(
             pre_transform_summary=transform.pre_transform_summary,
             post_transform_summary=transform.post_transform_summary,
             worst_windows=windows,
+            chart_points=chart_points,
         )
     rejected = _rejected_result(
         experiment=experiment,
@@ -1689,8 +1696,7 @@ def run_attack(
         else ()
     )
     positive_turnover_dates = frozenset(
-        timestamp.date()
-        for timestamp in baseline.turnover.index[baseline.turnover.gt(0.0)]
+        timestamp.date() for timestamp in baseline.turnover.index[baseline.turnover.gt(0.0)]
     )
     validation_context = AttackValidationContext(
         strategy_spec=strategy.spec,
@@ -1766,9 +1772,7 @@ def run_attack(
                             rejection_code=(
                                 proposal.rejection_code or RejectionCode.INVALID_PARAMETER
                             ),
-                            rejection_detail=(
-                                proposal.rejection_detail or "Candidate rejected."
-                            ),
+                            rejection_detail=(proposal.rejection_detail or "Candidate rejected."),
                         ),
                     )
                 )
@@ -1844,10 +1848,7 @@ def run_attack(
         if timed_out:
             stop_reason = StopReason.TIMEOUT
             break
-        if (
-            qualifying_scenarios
-            >= policy.evidence_condition.minimum_failure_scenarios
-        ):
+        if qualifying_scenarios >= policy.evidence_condition.minimum_failure_scenarios:
             stop_reason = StopReason.EVIDENCE_CONDITION_MET
             break
         if budget.remaining_scenarios == 0:

@@ -71,6 +71,7 @@ class BacktestResult:
     transaction_costs: pd.Series
     portfolio_returns: pd.Series
     equity_curve: pd.Series
+    drawdown_curve: pd.Series
     metrics: MetricSet
     failure_evaluation: FailureEvaluation
 
@@ -169,9 +170,7 @@ def _breach(
         worst_window_start=worst_start.date(),
         worst_window_end=worst_end.date(),
         trough_date=(
-            worst_end.date()
-            if rule.family is FailureRuleFamily.MAXIMUM_DRAWDOWN
-            else None
+            worst_end.date() if rule.family is FailureRuleFamily.MAXIMUM_DRAWDOWN else None
         ),
         recovery_date=None if recovery is None else recovery.date(),
         affected_symbols=affected_symbols,
@@ -222,9 +221,7 @@ def evaluate_failure_rules(
             high_water_mark = preceding_equity.max()
             worst_start = preceding_equity.index[preceding_equity.eq(high_water_mark)][-1]
             observed = float(drawdowns.loc[worst_end])
-            recovery_mask = equity_curve.loc[worst_end:].ge(
-                high_water_mark - numeric_tolerance
-            )
+            recovery_mask = equity_curve.loc[worst_end:].ge(high_water_mark - numeric_tolerance)
             if recovery_mask.any():
                 recovery = recovery_mask.index[recovery_mask.to_numpy()][0]
         elif rule.family is FailureRuleFamily.ROLLING_20_DAY_LOSS:
@@ -308,9 +305,7 @@ def _validate_supplied_asset_returns(
     if not asset_returns.index.equals(dataset.data.index):
         raise BacktestValidationError("asset-return dates must exactly match dataset dates")
     if not asset_returns.columns.equals(expected_columns):
-        raise BacktestValidationError(
-            "asset-return columns must match manifest symbols in order"
-        )
+        raise BacktestValidationError("asset-return columns must match manifest symbols in order")
     if any(
         not pd.api.types.is_numeric_dtype(dtype) or pd.api.types.is_bool_dtype(dtype)
         for dtype in asset_returns.dtypes
@@ -356,9 +351,7 @@ def _run_backtest_inputs(
     )
     turnover = effective_weights.sub(pretrade_weights).abs().sum(axis="columns")
     turnover = turnover.mask(turnover.le(numeric_tolerance), 0.0).rename("turnover")
-    transaction_costs = (turnover * (transaction_cost_bps / 10_000.0)).rename(
-        "transaction_cost"
-    )
+    transaction_costs = (turnover * (transaction_cost_bps / 10_000.0)).rename("transaction_cost")
     portfolio_returns = gross_returns.sub(transaction_costs).rename("portfolio_return")
     portfolio_values = portfolio_returns.to_numpy(dtype=np.float64, copy=False)
     if not np.isfinite(portfolio_values).all() or (portfolio_values <= -1.0).any():
@@ -384,6 +377,7 @@ def _run_backtest_inputs(
         transaction_costs=transaction_costs,
         portfolio_returns=portfolio_returns,
         equity_curve=equity_curve,
+        drawdown_curve=_drawdown_series(equity_curve).rename("drawdown"),
         metrics=metrics,
         failure_evaluation=evaluation,
     )
