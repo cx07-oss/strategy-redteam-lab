@@ -11,10 +11,6 @@ source_root = Path(__file__).resolve().parent / "src"
 if source_root.is_dir():
     sys.path.insert(0, str(source_root))
 
-from strategy_redteam.foundry_clients import (  # noqa: E402
-    FoundryReportWriter,
-    foundry_configuration,
-)
 from strategy_redteam.hosted import (  # noqa: E402
     DefenderHostedApplication,
     DefenderHostedRequest,
@@ -23,16 +19,19 @@ from strategy_redteam.hosted import (  # noqa: E402
     dataset_store_from_environment,
 )
 from strategy_redteam.hosted_server import create_invocation_host  # noqa: E402
+from strategy_redteam.model_provider import (  # noqa: E402
+    ModelProviderName,
+    build_report_writer,
+    provider_configuration_from_environment,
+)
 
 
 def build_application() -> DefenderHostedApplication:
-    project_endpoint, model = foundry_configuration()
     return DefenderHostedApplication(
         dataset_store=dataset_store_from_environment(),
         artifact_store=artifact_store_from_environment(),
-        report_writer=FoundryReportWriter(
-            project_endpoint=project_endpoint,
-            model=model,
+        report_writer=build_report_writer(
+            provider_configuration_from_environment(default=ModelProviderName.FOUNDRY),
         ),
     )
 

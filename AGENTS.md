@@ -10,6 +10,18 @@ These instructions apply to the entire repository.
 - Update `docs/STATUS.md` at the end of every gate with the exact commands run and their outcomes.
 - Do not claim a gate is complete until its acceptance commands pass. Do not create a Git commit unless the user requests it.
 
+## Cost-aware Codex routing
+
+- Use the project defaults in `.codex/config.toml`: `gpt-5.6-terra` with low reasoning. A model or reasoning choice made explicitly by the user or client takes precedence.
+- Handle simple, well-scoped work directly. Do not spawn an agent merely to classify a task, restate context, run one command, or make a small local edit.
+- Use `low_cost_scanner` only for a bounded read-only search, inventory, log triage, or mechanical documentation check when its compact summary will keep substantial raw context out of the main thread.
+- Use one `standard_worker` for routine non-trivial implementation or debugging that clearly needs more reasoning than the default. Give it an exact scope and acceptance check.
+- Use one `deep_reviewer` for read-only analysis or one `deep_worker` for implementation when work affects deterministic market calculations, execution timing, typed trust boundaries, artifact hashes or provenance, security, identity/RBAC, Azure deployment, cross-component architecture, or an unexplained acceptance failure after one bounded attempt.
+- Never delegate numerical market-result calculation or editing. The deterministic Python engine remains the only numerical authority.
+- Spawn at most one subagent at a time. Do not ask a subagent to spawn another subagent. Require a concise evidence summary instead of raw logs, and do not repeat completed work after escalation.
+- Do not use parallel agents unless the user explicitly requests parallel work. Subagents add token overhead, so escalate only when the expected correctness or context-isolation benefit justifies it.
+- Routing changes model effort only; it never expands the active gate, permissions, product scope, or authority to perform external, destructive, or live-Azure actions.
+
 ## Safety and product boundary
 
 - This is a research and adversarial-testing tool, not investment advice.

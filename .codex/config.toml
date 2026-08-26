@@ -1,0 +1,11 @@
+# Cost-aware project defaults. Explicit user or client selections take precedence.
+model = "gpt-5.6-terra"
+model_reasoning_effort = "low"
+model_verbosity = "low"
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 1
+default_subagent_model = "gpt-5.6-luna"
+default_subagent_reasoning_effort = "low"
+interrupt_message = true

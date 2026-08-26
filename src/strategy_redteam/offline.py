@@ -67,6 +67,12 @@ from strategy_redteam.domain import (
     StressScenario,
     Symbol,
 )
+from strategy_redteam.model_provider import (
+    ModelProviderConfiguration,
+    ModelProviderConfigurationError,
+    build_report_writer,
+    build_scenario_proposer,
+)
 from strategy_redteam.services import (
     AttackerEvidenceSummary,
     AttackerService,
@@ -139,6 +145,7 @@ class OfflineExperimentConfig(ContractModel):
     strategy: StrategySpec
     failure_rules: tuple[FailureRule, ...] = Field(min_length=1, max_length=3)
     attack_policy: AttackPolicy
+    model_provider: ModelProviderConfiguration = ModelProviderConfiguration()
     seed: Annotated[int, Field(strict=True, ge=0, le=4_294_967_295)]
     timeout_seconds: Annotated[float, Field(strict=True, gt=0.0, allow_inf_nan=False)]
     code_version: Annotated[str, Field(min_length=1, max_length=128)]
@@ -896,10 +903,13 @@ def run_offline_experiment(
         )
     ).resolve()
     try:
-        proposer = DeterministicOfflineScenarioClient.from_dataset(
-            dataset,
-            config.attack_policy,
-            experiment.max_total_scenarios,
+        proposer = build_scenario_proposer(
+            config.model_provider,
+            deterministic=DeterministicOfflineScenarioClient.from_dataset(
+                dataset,
+                config.attack_policy,
+                experiment.max_total_scenarios,
+            ),
         )
         attack_run = AttackerService(proposer).run(
             dataset=dataset,
@@ -915,7 +925,10 @@ def run_offline_experiment(
             )
         defense = DefenderService(
             store=store,
-            report_writer=DeterministicOfflineReportClient(),
+            report_writer=build_report_writer(
+                config.model_provider,
+                deterministic=DeterministicOfflineReportClient(),
+            ),
         ).defend(
             attack_run=attack_run,
             manifest_path=manifest_path,
@@ -933,7 +946,7 @@ def run_offline_experiment(
             attack_index=attack_index,
             defense=defense,
         )
-    except (AttackError, ArtifactIntegrityError) as error:
+    except (AttackError, ArtifactIntegrityError, ModelProviderConfigurationError) as error:
         raise OfflineRunError(f"offline attack failed: {error}") from error
     finally:
         if staging.exists():

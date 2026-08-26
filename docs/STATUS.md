@@ -1024,6 +1024,173 @@ deployed
 
 None. Gate 11 is closed; Gate 12 may begin only when explicitly requested.
 
+## Repository tooling — Cost-aware Codex routing
+
+**State:** Complete on 2026-08-26; this configuration did not start Gate 12
+
+### Deliverables
+
+- Added `.codex/config.toml` with a `gpt-5.6-terra`/low-reasoning project default, low verbosity,
+  a one-subagent concurrency cap, and `gpt-5.6-luna`/low as the default spawned-agent profile.
+- Added project-scoped `low_cost_scanner`, `standard_worker`, `deep_reviewer`, and `deep_worker`
+  agent definitions. Their fixed tiers are Luna/low, Terra/medium, and Sol/high; the scanner and
+  reviewer are read-only, and every profile forbids recursive delegation.
+- Added durable routing rules to `AGENTS.md`. Simple tasks stay in the low-effort main thread;
+  delegation is reserved for bounded context isolation or justified escalation, never numerical
+  market-result authority, scope expansion, parallel work by default, or live-Azure authorization.
+
+### Validation
+
+Performed on 2026-08-26 from the repository root:
+
+- The exact routing assertion below passed with `PASS: routing config and 4 profiles`:
+
+  ```powershell
+  & '.\.venv\Scripts\python.exe' -c "import tomllib,pathlib; p=pathlib.Path('.codex'); c=tomllib.loads((p/'config.toml').read_text(encoding='utf-8')); a=[tomllib.loads(x.read_text(encoding='utf-8')) for x in sorted((p/'agents').glob('*.toml'))]; assert (c['model'],c['model_reasoning_effort'],c['agents']['max_concurrent_threads_per_session'],[(x['name'],x['model'],x['model_reasoning_effort']) for x in a])==('gpt-5.6-terra','low',1,[('deep_reviewer','gpt-5.6-sol','high'),('deep_worker','gpt-5.6-sol','high'),('low_cost_scanner','gpt-5.6-luna','low'),('standard_worker','gpt-5.6-terra','medium')]); print('PASS: routing config and 4 profiles')"
+  ```
+- `git -c core.autocrlf=false diff --no-index --check -- NUL <file>` for each of the five new TOML
+  files: PASS; no whitespace diagnostics were emitted.
+- `git diff --check`: PASS with exit code 0; Git emitted only LF-to-CRLF warnings for `AGENTS.md`
+  and `docs/STATUS.md`.
+- `git status --short`: PASS; it showed modified `AGENTS.md`, modified `docs/STATUS.md`, and the new
+  `.codex/` directory only.
+- `rg -c "^## Cost-aware Codex routing$" AGENTS.md` and the corresponding status-heading count:
+  PASS; each routing section occurs exactly once.
+- `Get-Command codex -All`: PASS; it found the packaged desktop-app executable. Both
+  `codex --version` and the approved retry using its absolute WindowsApps path were blocked by the
+  package ACL with `Access is denied`, so the running task could not hot-load the new project
+  configuration through the CLI.
+- Pytest, Ruff, and mypy were not run because no Python source, package, schema, test, or runtime
+  behavior changed.
+
+### Assumptions and decisions
+
+- This follows the current official OpenAI Docs guidance for project-scoped custom agents and
+  explicit `model_reasoning_effort` settings. A user/client model selection has higher precedence.
+- Terra/low remains the parent/router because reliable enforcement of the financial research and
+  gate boundaries is more important than using Luna as the main classifier. Luna is limited to
+  bounded read-only scans whose compact result is expected to save main-thread context.
+- Subagents generally add total tokens. The one-agent cap, no-parallel default, concise handoff,
+  and escalation triggers optimize total token use rather than merely choosing the cheapest model.
+- The new defaults are expected to apply to new tasks or sessions opened in this trusted project;
+  they do not retroactively change the model of this already-running task.
+
+### Blockers
+
+None. Direct CLI reload verification was unavailable because of the installed WindowsApps ACL;
+TOML syntax and routing values passed deterministic local validation.
+
+## Gate 12B — Provider-neutral model-provider selection and configuration
+
+**State:** Complete locally on 2026-08-26; no Azure, Ollama, or other model invocation occurred
+
+### Deliverables
+
+- Added `strategy_redteam.model_provider`, a small configuration/factory layer with the recognized
+  provider names `deterministic`, `foundry`, and `ollama`. It deliberately retains
+  `ScenarioProposer` and `ReportWriter` as the only model-role contracts and introduces no generic
+  LLM protocol.
+- Added an explicit, serializable `model_provider` block to the existing offline YAML configuration.
+  The checked-in local demo selects `deterministic`, preserving its exact model-free behavior.
+- Routed offline attacker/defender client construction through the factory. Foundry construction is
+  lazy and reads its existing environment configuration only when `foundry` is selected. The two
+  Hosted Agent entry points now select providers centrally, retaining `foundry` as their default.
+- `ollama` validates as a recognized selection but fails with a typed configuration error stating
+  that its client is deferred to Gate 12C; no HTTP implementation or fallback was added.
+- Added focused provider tests for valid/default selections, invalid values, Foundry factory
+  continuity without network access, Ollama's deferred failure, and continued absence of provider
+  SDK coupling from `services.py`.
+
+### Validation
+
+Performed on 2026-08-26 from the repository root using
+`C:\Users\61450\OneDrive - The University of Melbourne\Documents\ChatGPT\Finance Red Team project\.venv\Scripts\python.exe`:
+
+- `-m pytest -q tests/test_model_provider.py`: PASS; 7 passed in 6.65 seconds.
+- `-m pytest -q tests/test_backtest.py tests/test_stress.py tests/test_attack.py tests/test_offline.py`:
+  PASS; 53 passed in 15.27 seconds.
+- `-m pytest -q`: PASS; 170 passed in 47.06 seconds with 78% branch-aware package coverage and no
+  warnings, skips, expected failures, placeholders, model calls, or network access.
+- `-m ruff check .`: PASS; `All checks passed!`.
+- `-m mypy src`: PASS; `Success: no issues found in 17 source files`.
+- `git diff --check`: PASS (exit code 0); Git emitted only existing LF-to-CRLF warnings.
+- `git status --short`: PASS; it showed the pre-existing routing-document/configuration changes and
+  the Gate 12B source, configuration, test, and status changes; nothing was reset, stashed, or
+  removed.
+
+### Assumptions and decisions
+
+- `STRATEGY_REDTEAM_MODEL_PROVIDER` is the non-secret environment selector for hosted entry points;
+  the existing offline YAML remains the explicit local configuration mechanism. Provider-specific
+  settings remain isolated and are not read at module import time.
+- Deterministic numerical modules, scenario semantics, budgets, no-look-ahead behavior, and artifact
+  contracts were not changed. Foundry support remains optional behind the existing role contracts.
+- Gate 12C and later gates remain unstarted; no telemetry or static-export work was added.
+
+### Blockers
+
+None.
+
+## Gate 12C — Local Ollama adapters for existing model-role contracts
+
+**State:** Complete locally on 2026-08-26; no live Ollama invocation occurred
+
+### Deliverables
+
+- Added `strategy_redteam.ollama_clients` with `OllamaScenarioProposer` and
+  `OllamaReportWriter`, using only the existing `ScenarioProposer` and
+  `ReportWriter` contracts. The official Ollama Python client is imported lazily.
+- Ollama requests send each existing Pydantic response model's JSON schema through
+  Ollama's `format` parameter. Returned text is parsed and Pydantic-validated as
+  `AttackBatch` or `DefenderNarrativeBatch` before it can reach application code.
+  Malformed, schema-invalid, and out-of-range data, as well as transport failures,
+  raise a typed `OllamaProviderError`; there is no repair or provider fallback.
+- Added non-secret Ollama-only environment configuration:
+  `STRATEGY_REDTEAM_OLLAMA_MODEL` (required),
+  `STRATEGY_REDTEAM_OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`),
+  `STRATEGY_REDTEAM_OLLAMA_TIMEOUT_SECONDS` (default `30`), and
+  `STRATEGY_REDTEAM_OLLAMA_TEMPERATURE` (default `0`). Foundry settings are not
+  read for Ollama, and deterministic mode remains model-free.
+- Updated provider selection and added the `ollama>=0.4` runtime dependency. No
+  numerical engine, scenario semantics, bounded budgets, or deterministic replay
+  behavior changed.
+
+### Validation
+
+Performed on 2026-08-26 from the repository root using `.venv\\Scripts\\python.exe`:
+
+- `-m pytest -q tests/test_ollama_clients.py tests/test_model_provider.py`: PASS;
+  13 passed in 7.49 seconds.
+- `-m pytest -q tests/test_backtest.py tests/test_stress.py tests/test_attack.py
+  tests/test_offline.py tests/test_model_provider.py tests/test_ollama_clients.py`:
+  PASS; 66 passed in 19.09 seconds.
+- Full suite was executed in three complete, non-overlapping groups because the
+  local command-output bridge truncated the single-suite summary: 106 passed in
+  8.78 seconds, 45 passed in 17.53 seconds, and 25 passed in 16.29 seconds
+  (176 total; no failures).
+- `-m ruff check .`: PASS; `All checks passed!`.
+- `-m mypy src`: PASS; `Success: no issues found in 18 source files`.
+- `git diff --check`: PASS (exit code 0); Git emitted only existing LF-to-CRLF
+  warnings. `git status --short` showed pre-existing Gate 12B/routing changes plus
+  the Gate 12C files; nothing was reset, stashed, or removed.
+- Manual smoke test: NOT RUN. `ollama` was not available on PATH and
+  `STRATEGY_REDTEAM_OLLAMA_MODEL` was absent. No model was downloaded and no
+  network request was made. With a local server and model configured, select
+  `STRATEGY_REDTEAM_MODEL_PROVIDER=ollama` and run the existing bounded local
+  workflow; its first proposal validates through the adapter.
+
+### Assumptions and decisions
+
+- Ollama text/proposals are not deterministic. Immutable data, data hashes,
+  strategy configuration, numeric scenario application, backtests, rule evaluation,
+  and fixed-scenario defender replay remain deterministic and reproducible.
+- The Ollama client is local-only with no automatic cloud or paid-provider fallback.
+
+### Blockers
+
+The optional real local Ollama smoke test is blocked by the absent local executable
+and model configuration; automated acceptance is network-free and passed.
+
 ## Later gates
 
 **State:** Pending — not started. Their exact scopes and done conditions must be supplied or approved before work begins.

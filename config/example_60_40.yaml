@@ -150,6 +150,9 @@ attack_policy:
     minimum_failure_scenarios: 3
     minimum_breach_count: 1
     minimum_maximum_normalized_excess: 0.0
+model_provider:
+  schema_version: "1.0"
+  provider: deterministic
 seed: 20260823
 timeout_seconds: 60.0
 code_version: gate-8-offline

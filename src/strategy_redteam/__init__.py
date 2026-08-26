@@ -120,6 +120,14 @@ from strategy_redteam.historical import (
     HistoricalScanValidationError,
     scan_historical_failures,
 )
+from strategy_redteam.model_provider import (
+    ModelProviderConfiguration,
+    ModelProviderConfigurationError,
+    ModelProviderName,
+    build_report_writer,
+    build_scenario_proposer,
+    provider_configuration_from_environment,
+)
 from strategy_redteam.offline import (
     MAX_OFFLINE_CONFIG_BYTES,
     OFFLINE_ATTACK_ARTIFACT_FILES,
@@ -296,6 +304,9 @@ __all__ = [
     "LocalDatasetStore",
     "MetricSet",
     "MissingDataError",
+    "ModelProviderConfiguration",
+    "ModelProviderConfigurationError",
+    "ModelProviderName",
     "NonEvaluableWindows",
     "NonFiniteDataError",
     "NumericRange",
@@ -352,6 +363,8 @@ __all__ = [
     "apply_sustained_cumulative_shock",
     "apply_transaction_cost_multiplier",
     "apply_volatility_multiplier",
+    "build_report_writer",
+    "build_scenario_proposer",
     "canonical_data_sha256",
     "canonical_json_bytes",
     "canonical_json_sha256",
@@ -364,6 +377,7 @@ __all__ = [
     "load_attack_policy",
     "load_offline_config",
     "offline_artifact_names",
+    "provider_configuration_from_environment",
     "render_defender_markdown",
     "render_failure_report",
     "run_attack",
