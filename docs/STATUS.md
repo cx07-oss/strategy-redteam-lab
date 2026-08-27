@@ -2161,3 +2161,23 @@ incomplete pending a fresh real local Ollama smoke.
 ### Next recommended phase
 
 - Recruiter-facing frontend polish and final portfolio/repository review.
+
+## Recruiter-facing frontend polish
+
+**State:** Complete on 2026-08-27.
+
+- Recruiter-facing frontend polish complete. The verified replay now has a clearer first-view
+  hierarchy, key-result cards, a compact LLM/Python/defender trust-boundary strip, concise
+  selected-attack facts, and a more legible evidence timeline and provenance area.
+- The dependency-free SVG replay chart now has responsive axes, a baseline/stressed legend,
+  keyboard and hover telemetry inspection, Equity/Drawdown presentation, and a clearly labelled
+  canonical `2024-03-29` selected-stress marker. It does not infer breach dates.
+- Evidence semantics remain unchanged: run-024 remains authoritative, including its fixture,
+  canonical events, numerical metrics, and defender verdict. No backend, provider, telemetry, or
+  numerical-evaluation changes occurred.
+- Frontend tests, lint, and the static production build passed. Responsive inspection at 1440px,
+  768px, and 390px found no horizontal overflow; the frontend remains production-ready.
+
+### Next phase
+
+- Final portfolio / GitHub / recruiter review.
