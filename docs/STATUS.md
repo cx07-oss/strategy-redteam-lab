@@ -2051,3 +2051,31 @@ incomplete pending a fresh real local Ollama smoke.
 ### Next gate
 
 - Gate 15 — clean-clone / end-to-end release acceptance.
+
+## Gate 15 repair checkpoint — canonical manifest LF checkout
+
+**State:** Gate 15 remains pending on 2026-08-27.
+
+- The failed Windows clean-clone offline workflow was traced to Git converting the canonical
+  `tests/fixtures/offline-cache/manifests/correlation-break.json` checkout from LF to CRLF. Its
+  Git index blob was already canonical LF; no immutable manifest content was changed.
+- Added the narrow checkout rule
+  `tests/fixtures/offline-cache/manifests/*.json text eol=lf` in `.gitattributes`. It applies only
+  to the canonical immutable manifest-fixture directory. Effective attributes for the manifest
+  are `text: set` and `eol: lf`; the current repository reports `i/lf w/lf`.
+- Focused data/offline tests and the full backend suite retain canonical-manifest validation; no
+  parser, hash, runtime normalisation, numerical-engine, provider, or frontend behaviour changed.
+
+### Validation
+
+- `tests/test_data.py tests/test_offline.py`: PASS; **21 passed in 15.08s**.
+- `.venv\Scripts\python.exe -m pytest -q --basetemp="$pytestTmp"`: PASS; **192 passed in
+  79.78s** using a fresh external temporary directory.
+- `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS.
+
+### Remaining release check
+
+- Full Gate 15 acceptance must be rerun from a new published commit so a fresh clone receives the
+  committed `.gitattributes` rule and proves `w/lf` checkout plus the documented offline workflow.
