@@ -1907,3 +1907,40 @@ incomplete pending a fresh real local Ollama smoke.
 
 - Gate 13A is unblocked: **Next.js frontend foundation / Verified Run Replay**. It is not
   implemented in this gate.
+
+## Gate 13A — Next.js frontend foundation / Verified Run Replay
+
+**State:** Complete on 2026-08-27.
+
+- Added an isolated `frontend/` Next.js 16.3.3 App Router project using TypeScript, React
+  19.2.4, ESLint 9.39.1, and no state-management or charting dependency. The replay is
+  static and read-only: it neither invokes models nor evaluates strategies nor mutates artifacts.
+- `frontend/scripts/sync-demo-telemetry.mjs` copies
+  `artifacts/demo/ollama-run-024/demo-telemetry.json` byte-for-byte to the frontend fixture.
+  The checked-in fixture hash matched the authoritative artifact:
+  `898fc94cb4ace7fd7a486538686ec48b6b9d1190063f7970fdd1959d0f1ae1d9`.
+- A small explicit TypeScript parser validates the required run, evaluation, chart-point, and
+  event fields before the page receives them. It fails closed for malformed telemetry, non-finite
+  numeric values, non-contiguous event sequences, and absent valid evaluations; rejected
+  scenarios cannot be selected as replay evidence.
+- The static replay page renders provider/model, reproduced verdict, truncated hash provenance,
+  `ollama-r01-c01` evaluation summary, an inline-SVG baseline/stressed equity chart, stressed
+  drawdown, ordered canonical event timeline, and the deterministic-evaluation versus defender-
+  replay boundary. Displayed telemetry values are 3 breaches, maximum normalized excess
+  `1.1986`, and 81 chart points.
+
+### Validation
+
+- `frontend`: `pnpm test`: PASS; **3 passed** (fixture parse/evidence fields, malformed telemetry,
+  and rejected-scenario selection).
+- `frontend`: `pnpm lint`: PASS.
+- `frontend`: `pnpm build`: PASS; static `/` replay route generated with Next.js 16.3.3.
+- `.venv\\Scripts\\python.exe -m pytest -q --basetemp="$pytestTmp"`: PASS; **192 passed** using
+  a fresh external temporary directory (approximately 80 seconds of test execution).
+- `.venv\\Scripts\\python.exe -m ruff check .`: PASS; `All checks passed!`.
+- `.venv\\Scripts\\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (existing line-ending warning for `.gitignore` only).
+
+### Next gate
+
+- Gate 13B remains: **richer dashboard / interaction / polish**. No deployment is claimed.
