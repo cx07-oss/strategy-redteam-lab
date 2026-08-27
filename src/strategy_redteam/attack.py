@@ -819,9 +819,12 @@ class DeterministicOfflineProposer:
             raise OfflineProposalError("round_number is outside the hard budget")
         if not 0 <= max_candidates <= MAX_CANDIDATES_PER_ROUND:
             raise OfflineProposalError("max_candidates is outside the hard budget")
-        return tuple(
-            self._scenario(round_number, candidate_number)
-            for candidate_number in range(1, max_candidates + 1)
+        return build_deterministic_candidates(
+            market_dates=self.market_dates,
+            policy=self.policy,
+            seed=self.seed,
+            round_number=round_number,
+            max_candidates=max_candidates,
         )
 
     def _scenario(self, round_number: int, candidate_number: int) -> StressScenario:
@@ -1025,6 +1028,47 @@ class DeterministicOfflineProposer:
                 ),
             )
         raise OfflineProposalError(f"unsupported offline family: {family.value}")
+
+
+def build_deterministic_candidates(
+    *,
+    market_dates: tuple[date, ...],
+    policy: AttackPolicy,
+    seed: int,
+    round_number: int,
+    max_candidates: int,
+) -> tuple[StressScenario, ...]:
+    """Return the existing bounded offline scenarios for reuse by future catalog builders."""
+    source = DeterministicOfflineProposer(market_dates=market_dates, policy=policy, seed=seed)
+    return tuple(
+        source._scenario(round_number, candidate_number)
+        for candidate_number in range(1, max_candidates + 1)
+    )
+
+
+@dataclass(frozen=True)
+class AttackCatalogEntry:
+    """One immutable, canonical candidate with a deterministic opaque catalog key."""
+
+    attack_key: str
+    scenario: StressScenario
+
+
+@dataclass(frozen=True)
+class AttackCatalog:
+    """Ordered immutable catalog for a later provider-selection boundary."""
+
+    entries: tuple[AttackCatalogEntry, ...]
+
+
+def build_attack_catalog(candidates: Sequence[StressScenario]) -> AttackCatalog:
+    """Assign stable keys without mutating or generating canonical scenarios."""
+    return AttackCatalog(
+        entries=tuple(
+            AttackCatalogEntry(attack_key=f"atk_{index:03d}", scenario=scenario)
+            for index, scenario in enumerate(candidates, start=1)
+        )
+    )
 
 
 def _interpolate(value_range: NumericRange, fraction: float) -> float:
@@ -1359,6 +1403,23 @@ def _prepare_candidate(
     seen_semantics: set[str],
 ) -> tuple[ProposalRecord, StressScenario | None]:
     scenario_id, input_sha256 = _candidate_identity(raw, round_number, candidate_number)
+    provider_failure = raw.get("provider_failure") if isinstance(raw, Mapping) else None
+    if isinstance(provider_failure, str):
+        detail = _safe_rejection_detail(provider_failure)
+        return (
+            ProposalRecord(
+                round_number=round_number,
+                candidate_number=candidate_number,
+                scenario_id=scenario_id,
+                input_sha256=input_sha256,
+                semantic_sha256=None,
+                decision=ProposalDecision.REJECTED,
+                scenario=None,
+                rejection_code=RejectionCode.INVALID_PARAMETER,
+                rejection_detail=detail,
+            ),
+            None,
+        )
     try:
         scenario = raw if isinstance(raw, StressScenario) else StressScenario.model_validate(raw)
     except ValidationError as error:
@@ -1668,6 +1729,31 @@ def _validate_attack_context(
     return manifest_sha256
 
 
+def build_attack_validation_context(
+    *,
+    dataset: StoredDataset,
+    strategy: Strategy,
+    experiment: ExperimentSpec,
+    baseline: BacktestResult,
+) -> AttackValidationContext:
+    """Build the sole authoritative policy-validation context for one attack run."""
+    rebalance_dates = (
+        tuple(timestamp.date() for timestamp in strategy.rebalance_dates(dataset))
+        if isinstance(strategy, FixedMonthly6040Strategy)
+        else ()
+    )
+    positive_turnover_dates = frozenset(
+        timestamp.date() for timestamp in baseline.turnover.index[baseline.turnover.gt(0.0)]
+    )
+    return AttackValidationContext(
+        strategy_spec=strategy.spec,
+        market_dates=tuple(timestamp.date() for timestamp in dataset.data.index),
+        rebalance_dates=rebalance_dates,
+        transaction_cost_bps=experiment.transaction_cost_bps,
+        positive_turnover_dates=positive_turnover_dates,
+    )
+
+
 def run_attack(
     *,
     dataset: StoredDataset,
@@ -1690,20 +1776,11 @@ def run_attack(
         experiment.transaction_cost_bps,
         experiment.numeric_tolerance,
     )
-    rebalance_dates = (
-        tuple(timestamp.date() for timestamp in strategy.rebalance_dates(dataset))
-        if isinstance(strategy, FixedMonthly6040Strategy)
-        else ()
-    )
-    positive_turnover_dates = frozenset(
-        timestamp.date() for timestamp in baseline.turnover.index[baseline.turnover.gt(0.0)]
-    )
-    validation_context = AttackValidationContext(
-        strategy_spec=strategy.spec,
-        market_dates=tuple(timestamp.date() for timestamp in dataset.data.index),
-        rebalance_dates=rebalance_dates,
-        transaction_cost_bps=experiment.transaction_cost_bps,
-        positive_turnover_dates=positive_turnover_dates,
+    validation_context = build_attack_validation_context(
+        dataset=dataset,
+        strategy=strategy,
+        experiment=experiment,
+        baseline=baseline,
     )
 
     proposals: list[ProposalRecord] = []

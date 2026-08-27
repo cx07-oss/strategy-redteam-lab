@@ -11,6 +11,7 @@ from agent_framework.foundry import FoundryChatClient
 from azure.identity import DefaultAzureCredential
 from pydantic import BaseModel
 
+from strategy_redteam.attack import AttackCatalog
 from strategy_redteam.domain import AttackBatch
 from strategy_redteam.services import (
     AttackerEvidenceSummary,
@@ -110,7 +111,9 @@ class FoundryScenarioProposer:
         *,
         prompt: str,
         evidence_summary: AttackerEvidenceSummary,
+        attack_catalog: AttackCatalog | None = None,
     ) -> str:
+        del attack_catalog
         return self._client.run(
             instructions=prompt,
             message=evidence_summary.model_dump_json(),

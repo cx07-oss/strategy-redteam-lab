@@ -1479,6 +1479,16 @@ in this shell.
 - Focused Ollama tests passed before this schema-only adjustment; `ruff`, `mypy`, and
   `git diff --check` pass after it. No real run was attempted.
 
+## Gate 12E diagnostic repair — Ollama chat failure classification
+
+**State:** Implemented locally on 2026-08-26; real smoke not run in this shell.
+
+- Chat failures now distinguish safe `ollama_connection_failure`, `ollama_timeout_failure`,
+  `ollama_response_error` (status only), and `ollama_client_failure` (exception class only).
+  No server body, prompt, response, or exception text is retained.
+- Provider failures now bypass `StressScenario` parsing and become direct rejected evaluations with
+  `scenario=null`, no metrics, and no chart points, preserving the safe provider detail.
+
 ## Acceptance environment record — fresh pytest base temporary directory
 
 **State:** Recorded on 2026-08-26; documentation-only acceptance update.
@@ -1504,3 +1514,253 @@ in this shell.
 ## Later gates
 
 **State:** Pending — not started. Their exact scopes and done conditions must be supplied or approved before work begins.
+
+## Gate 12E follow-up — local provider admissibility context
+
+**State:** In progress on 2026-08-26; no real Ollama smoke was run from this shell.
+
+- Prompt-only policy guidance was insufficient for the genuine local model path.  The attacker
+  service now derives a read-only return-dependent calendar (excluding the first close, which has
+  no asset return) and the monthly strategy rebalance calendar from the validated dataset and
+  strategy.  These identities, not prices or returns, are supplied in the bounded evidence summary.
+- The Ollama adapter filters baseline-impossible friction rows before constructing its provider
+  prompt, exposes the authoritative return/rebalance choices, and takes scenario identity away
+  from the model.  It assigns deterministic per-round IDs of the form `ollama-rRR-cCC`; all model
+  components, numerical values, and narrative fields otherwise pass unchanged into canonical
+  `StressScenario` validation and the existing policy/engine path.
+- Focused regression checks: `tests/test_model_provider.py tests/test_ollama_clients.py` — PASS;
+  23 passed in 14.03s using a fresh `%TEMP%` basetemp.  `ruff`, `mypy`, and `git diff --check`
+  passed.  A complete suite was run once and reached one unrelated boundary-test assertion caused
+  solely by a provider name in a generic comment; that comment was removed.  A final clean full
+  suite result remains to be recorded before this follow-up can be considered complete.
+
+## Gate 12E repair — template-driven local proposal contract
+
+**State:** Complete locally on 2026-08-26; no real Ollama smoke was run from this shell.
+
+- The prior Ollama response contract was the canonical free-form `StressScenario`, so a model could
+  still choose an unusable first return row, arbitrary component ordering, and a friction family
+  despite prompt-only filtering.  The Ollama-only boundary now builds a deterministic Pydantic
+  union from the runtime policy rows.  A zero-cost baseline removes the friction variant from the
+  actual `format` schema, not merely from prose.
+- Model proposals now select a template and provide only bounded substantive parameters.  Date
+  parameters are indices into the verified `return_dates` list, which excludes dataset row zero.
+  Rebalance proposals select an actual rebalance-target index and literal offset `-3`, `-2`, or
+  `-1`; the adapter resolves that pair to the authoritative calendar date.  It builds the exact
+  policy-owned ordered component template and assigns `ollama-rRR-cCC` IDs.  Numerical values,
+  durations, offsets, hypothesis, and headline are copied unchanged; canonical schema and policy
+  validation still run after conversion.
+
+### Validation
+
+- `python -m pytest -q --basetemp="$pytestTmp"`: PASS; **188 passed in 71.93s** (fresh external
+  temporary directory; no network/model calls).
+- Focused provider tests: PASS; 15 passed in 14.26s.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (existing line-ending warnings only).
+
+### Remaining risk
+
+- The dynamic local schema is network-free tested only.  A bounded real Ollama smoke remains the
+  required next integration check; none was run here and no artifact was fabricated.
+
+## Gate 12E repair — Ollama dynamic-schema HTTP 400 compatibility
+
+**State:** Complete locally on 2026-08-26; real smoke remains required.
+
+- The 400 was introduced by sending Pydantic's runtime-generated union schema directly as Ollama
+  `format`.  That form can contain dynamic union/ref/literal machinery not present in the earlier
+  accepted static request.  The provider now sends a conservative flat object/array schema with
+  only properties, required fields, scalar types, and string enums.  The dynamic Pydantic template
+  model remains the strict post-response validator.
+- Runtime template filtering remains structural through the `template` string enum; zero-cost
+  friction is omitted.  Return rows remain integer selectors into the row-zero-excluded calendar.
+  Rebalance offsets are lossless string choices `minus_3`, `minus_2`, `minus_1`, mapped only after
+  validation to `-3`, `-2`, `-1` against authoritative rebalance targets.  IDs and canonical
+  component ordering remain application-owned; substantive values are unchanged.
+- The new focused schema test asserts no `$defs`, `$ref`, `anyOf`, `oneOf`, or discriminator is
+  emitted, while retaining `think=False` and the two-call bound.  Telemetry remains status-only for
+  HTTP failures.
+
+### Validation
+
+- `python -m pytest -q --basetemp="$pytestTmp"`: PASS; **189 passed in 66.54s**.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (existing line-ending warnings only).
+
+## Gate 12E repair — bounded two-stage Ollama proposal generation
+
+**State:** Complete locally on 2026-08-27; a real local smoke is still required.
+
+- The accepted flat one-call schema exposed a cross-template parameter superset, allowing Qwen to
+  mix gap, friction, and inflation fields.  The Ollama proposer now makes exactly two requests:
+  stage one selects candidate position, a runtime-applicable template key, and only legal context
+  selectors; stage two receives an exact flat schema with deterministic `candidate_NN` properties
+  containing only that selected template's substantive fields.
+- Both wire schemas use only flat objects/arrays, scalar types, required fields, and string enums;
+  neither uses a union, discriminator, `$ref`, or `$defs`.  Invalid stage-one output fails closed
+  after one request; invalid stage-two output fails closed after the second.  No correction call can
+  create a third request.
+- Zero-cost friction remains absent from the stage-one template enum.  Return-row selectors exclude
+  row zero.  Rebalance context uses authoritative target selectors plus `minus_3`, `minus_2`, or
+  `minus_1`, resolved losslessly after validation.  IDs and component order remain application
+  owned; parameters, durations, offsets, and narrative are copied unchanged into canonical checks.
+
+### Validation
+
+- `python -m pytest -q --basetemp="$pytestTmp"`: PASS; **190 passed in 71.36s**.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (existing line-ending warnings only).
+
+## Gate 12E redesign — application-owned fixed Ollama candidate slots
+
+**State:** Implementation and network-free verification complete on 2026-08-27; Gate 12E
+acceptance remains pending a real local Ollama smoke with at least one valid deterministic
+evaluation.
+
+- Root cause of the genuine 12-selection failure: the first-stage local schema exposed a
+  model-owned variable-length `selections` array and `candidate_index`.  The local model could
+  therefore emit more entries than the small run's bounded capacity; strict validation correctly
+  rejected indexes above three.
+- The provider now derives `candidate_count = min(max_candidates, remaining_scenarios)` from the
+  authoritative attacker evidence before either request.  A small 3/3 run emits exactly
+  `candidate_01`, `candidate_02`, and `candidate_03`; neither `candidate_index` nor `selections`
+  exists in either wire contract.
+- Stage one is a flat object with those fixed candidate properties only.  Each property contains
+  exactly a `template_key` enum over runtime-applicable policy templates.  It has no numerical
+  parameters, dates, offsets, narratives, IDs, or arrays.  Zero-cost transaction friction,
+  inactive rows, and policy-disallowed rows are absent structurally.
+- Stage two has the identical application-owned slot keys.  Each slot has only the fields for its
+  stage-one template, with `additionalProperties: false`; it cannot select a template, emit an ID,
+  or mix fields from another template.  Return choices use `row_NNN` enums over legal return rows
+  (row zero excluded).  Rebalance choices use `rebalance_NNN` plus exactly `minus_3`, `minus_2`,
+  or `minus_1`; the provider maps these losslessly to the verified calendars.
+- Exactly two local requests are possible: template selection then selected-template payload.  An
+  invalid stage one stops after one and invalid stage two after two; there is no correction or
+  per-candidate call.  Canonical IDs remain application-owned as `ollama-rRR-cCC`.  All
+  model-owned numerical values, semantic selector choices, and narrative are passed unchanged
+  except for authoritative selector-to-index/date resolution before canonical validation.
+
+### Validation
+
+- `python -m pytest -q --basetemp="$pytestTmp"`: PASS; **192 passed in 77.18s** using a fresh
+  external `%TEMP%` directory.  New network-free checks cover the 3-slot regression, no
+  selections/index surface, extra-slot rejection without truncation, row-zero exclusion, exact
+  selected-template stage-two fields, and end-to-end deterministic evaluation with metrics and
+  chart points.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (existing line-ending warnings only).
+
+### Remaining risk
+
+- The exact fixed-slot schemas are verified only with fake clients.  A bounded real local Ollama
+  smoke is still required to verify its grammar implementation and to demonstrate that at least
+  one policy-valid proposal reaches the deterministic engine.  No smoke was run here and no
+  artifact was fabricated.
+
+## Gate 12E redesign — Ollama JSON mode with strict local validation
+
+**State:** Implementation and network-free verification complete on 2026-08-27; Gate 12E remains
+pending a successful real local smoke.
+
+- The latest real fixed-slot run failed before validation with `ollama_response_error: status=500`.
+  The provider no longer sends any runtime JSON Schema to local Ollama, removing its grammar/schema
+  compiler from this path.  Both bounded proposer calls now send exactly `format="json"`, retain
+  `think=False`, the configured temperature, model, and timeout, and receive deterministic textual
+  JSON contracts instead.
+- Stage one locally parses and strictly validates the fixed application-owned candidate slots, each
+  containing only a runtime-applicable `template_key`; extra/missing slots, unavailable templates,
+  candidate IDs/indexes, and arbitrary fields fail closed after call one.  Stage two locally parses
+  the same slots and validates the exact selected-template payload through the provider-local strict
+  Pydantic model before canonical conversion.  Mixed-template fields, unknown selectors, wrong
+  types, and extras fail closed after call two.
+- The removed wire-schema helpers generated the prior flat/dynamic JSON Schema objects.  The
+  provider retains strict local models, canonical policy/domain validation, semantic `row_NNN` and
+  `rebalance_NNN` selector maps, authoritative component ordering and IDs, and lossless selector
+  resolution.  Numerical stress values and narrative remain unchanged model-owned values.
+- Safe diagnostics now distinguish JSON parse, stage-one validation, and stage-two validation
+  failures in addition to the existing response/timeout categories, exposing at most bounded
+  paths and error types rather than raw model output or prompts.
+
+### Validation
+
+- `python -m pytest -q --basetemp="$pytestTmp"`: PASS; **192 passed in 44.51s**, using a fresh
+  external `%TEMP%` directory.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (existing line-ending warnings only).
+
+### Remaining risk
+
+- JSON mode avoids the observed schema grammar failures but has not been exercised against the
+  local Ollama server from this shell.  The next bounded real smoke must prove a valid proposal
+  reaches deterministic evaluation; no artifact was fabricated here.
+
+## Gate 12E repair — isolated local stage inputs
+
+**State:** Implementation complete locally on 2026-08-27; real smoke remains required.
+
+- Before this repair, both calls passed `AttackerEvidenceSummary.model_dump_json()` as the Ollama
+  user message.  That canonical shape included `schema_version`, `experiment_id`, and
+  `round_number`, plausibly causing run-019 JSON mode output to mirror provenance fields rather
+  than fixed candidate slots.
+- Stage one now receives only `_Stage1SelectionContext`: `allowed_template_keys`, fixed
+  `candidate_slots`, and `transaction_cost_bps`.  It contains no canonical provenance, scenario,
+  telemetry, or prior-result shape.  The final system instruction is the required fixed-slot
+  output contract.  Provenance-shaped output is regression-tested to fail closed as
+  `ollama_stage1_validation_failure` after one call.
+- Stage two also no longer receives canonical evidence: `_Stage2ParameterContext` contains only
+  validated selected templates and bounded return/rebalance selector keys.  Its validation and
+  two-call JSON-mode behaviour are unchanged.
+
+### Validation
+
+- Full suite before the final test-only formatting correction: **193 passed in 71.58s** using a
+  fresh external `%TEMP%` basetemp.  Focused provider tests then passed: **20 passed in 25.85s**.
+- Final `python -m ruff check .`: PASS; `All checks passed!`.
+- Final `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- Final `git diff --check`: PASS (existing line-ending warnings only).
+
+### Remaining risk
+
+- A bounded real smoke must confirm that the smaller non-provenance contexts cause Qwen to return
+  the fixed candidate slots and reach deterministic evaluation.  No real run occurred here.
+
+## Gate 12E catalog refactor — Phases 1, 2A, and 2B
+
+**State:** Complete locally on 2026-08-27; Gate 12E remains incomplete.
+
+- Phase 1 extracts deterministic candidate construction and represents the resulting immutable
+  `AttackCatalog` with deterministic `atk_NNN` keys, preserving the canonical scenario values.
+- Phase 2A extracts the sole provider-neutral `AttackValidationContext` construction path used by
+  normal attack execution and catalog prevalidation.
+- Phase 2B builds the deterministic, policy-aware catalog before model exposure in
+  `AttackerService`, validates every entry with the active policy and authoritative context, and
+  threads the same immutable object service -> adapter -> proposer.  Policy-inapplicable entries,
+  including zero-cost friction, inactive/disallowed families, a first-row return-dependent gap,
+  and illegal rebalance timing, are excluded.  Malformed/internal-invalid generated candidates
+  fail closed rather than entering the catalog.
+- Deterministic and Foundry providers are unchanged.  Ollama still uses the existing two-stage
+  numerical-generation path; catalog-key selection is Phase 3 and has not been implemented.  No
+  real catalog-selection Ollama smoke was run.
+
+### Validation
+
+- Focused `tests/test_services.py tests/test_attack.py tests/test_ollama_clients.py`: PASS;
+  **53 passed in 25.97s** (exit 0).
+- `python -m pytest -q --basetemp="$pytestTmp"`: PASS; **200 passed in 60.77s** using a fresh
+  external `%TEMP%` directory.  The final pytest summary was recorded; no project `.pytest_tmp`
+  directory was reused.
+- `python -m ruff check .`: PASS; `All checks passed!`.
+- `python -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (existing line-ending warnings only).
+
+### Remaining risk
+
+- Phase 3 must replace the current Ollama numerical proposal path with bounded catalog-key
+  selection, then a genuine bounded local Ollama smoke must confirm a valid deterministic
+  evaluation.  Gate 12E must not be accepted before that work and smoke complete.

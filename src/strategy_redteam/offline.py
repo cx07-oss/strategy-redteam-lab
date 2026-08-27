@@ -29,6 +29,7 @@ from strategy_redteam.artifacts import (
     verify_run_artifacts,
 )
 from strategy_redteam.attack import (
+    AttackCatalog,
     AttackError,
     AttackHypothesisPolicy,
     AttackPolicy,
@@ -323,9 +324,10 @@ class DeterministicOfflineScenarioClient:
         *,
         prompt: str,
         evidence_summary: AttackerEvidenceSummary,
+        attack_catalog: AttackCatalog | None = None,
     ) -> str:
         """Return a bounded AttackBatch; the fixed prompt is intentionally inert here."""
-        del prompt
+        del prompt, attack_catalog
         scenarios = tuple(
             self._scenario(
                 evidence_summary.round_number,

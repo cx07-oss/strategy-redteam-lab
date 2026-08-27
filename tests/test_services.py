@@ -12,7 +12,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
 import pytest
+from pydantic import ValidationError
 
+import strategy_redteam.services as services_module
 from strategy_redteam import (
     ATTACKER_PROMPT_PATH,
     DEFENDER_PROMPT_PATH,
@@ -40,8 +42,12 @@ from strategy_redteam import (
     StressResult,
     StressScenario,
     Symbol,
+    load_attack_policy,
 )
 from strategy_redteam.data import DATA_FIELDS
+
+ROOT = Path(__file__).resolve().parents[1]
+POLICY_PATH = ROOT / "config" / "attack-policy-v1.yaml"
 
 
 @dataclass(frozen=True)
@@ -217,6 +223,90 @@ def _attack(
         artifact_directory=tmp_path / "attack-artifacts",
         clock=clock or ManualClock(),
     )
+
+
+def test_attacker_service_forwards_prevalidated_immutable_catalog(tmp_path: Path) -> None:
+    context = _context(tmp_path)
+    proposer = FakeScenarioProposer((_batch(context, _gap(context, "catalog-gap", -0.40)),))
+    _attack(tmp_path, context, proposer)
+    catalog = proposer.attack_catalogs[0]
+    assert catalog is not None
+    assert catalog.entries
+    assert tuple(entry.attack_key for entry in catalog.entries) == tuple(
+        f"atk_{index:03d}" for index in range(1, len(catalog.entries) + 1)
+    )
+    for entry in catalog.entries:
+        assert isinstance(entry.scenario, StressScenario)
+        context.policy.validate_scenario(entry.scenario)
+
+
+@pytest.mark.parametrize("family", ["transaction_cost_multiplier", "volatility_multiplier"])
+def test_policy_inapplicable_generated_candidates_are_excluded_from_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, family: str
+) -> None:
+    context = _context(tmp_path)
+    component = (
+        StressComponent(family=family, transaction_cost_multiplier=2.0)
+        if family == "transaction_cost_multiplier"
+        else StressComponent(
+            family=family,
+            start_date=context.dataset.data.index[0].date(),
+            end_date=context.dataset.data.index[19].date(),
+            symbols=("SPY", "TLT"),
+            volatility_multiplier=2.0,
+        )
+    )
+    invalid = _gap(context, "inapplicable", -0.4).model_copy(update={"components": (component,)})
+    monkeypatch.setattr(
+        services_module, "build_deterministic_candidates", lambda **_: (invalid,)
+    )
+    proposer = FakeScenarioProposer((_batch(context, _gap(context, "valid", -0.4)),))
+    _attack(tmp_path, context, proposer)
+    assert proposer.attack_catalogs[0] is not None
+    assert proposer.attack_catalogs[0].entries == ()
+
+
+def test_malformed_generated_candidate_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    context = _context(tmp_path)
+    monkeypatch.setattr(services_module, "build_deterministic_candidates", lambda **_: ({},))
+    proposer = FakeScenarioProposer((_batch(context, _gap(context, "valid", -0.4)),))
+    with pytest.raises(ValidationError):
+        _attack(tmp_path, context, proposer)
+
+
+@pytest.mark.parametrize(
+    ("position", "scenario_id"),
+    (
+        (0, "forbidden-first-return-row"),
+        (-1, "illegal-rebalance-timing"),
+    ),
+)
+def test_invalid_rebalance_dates_are_excluded_from_catalog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    position: int,
+    scenario_id: str,
+) -> None:
+    """Catalog prevalidation uses the canonical rebalance-date policy checks."""
+    context = replace(_context(tmp_path), policy=load_attack_policy(POLICY_PATH))
+    invalid = _gap(
+        context,
+        scenario_id,
+        -0.10,
+        position=position,
+        headline="Typed rebalance timing stress",
+    )
+    monkeypatch.setattr(
+        services_module, "build_deterministic_candidates", lambda **_: (invalid,)
+    )
+    proposer = FakeScenarioProposer((_batch(context, _gap(context, "valid", -0.4)),))
+
+    _attack(tmp_path, context, proposer)
+
+    assert proposer.attack_catalogs[0] is not None
+    assert proposer.attack_catalogs[0].entries == ()
 
 
 def _writer_batch(

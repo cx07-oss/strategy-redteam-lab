@@ -13,6 +13,7 @@ import json
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Protocol, Self
@@ -20,11 +21,16 @@ from typing import Annotated, Protocol, Self
 from pydantic import Field, ValidationError, model_validator
 
 from strategy_redteam.attack import (
+    AttackCatalog,
     AttackPolicy,
+    AttackPolicyViolation,
     AttackRun,
     CandidatePayload,
     Clock,
     ScenarioEvaluationRecord,
+    build_attack_catalog,
+    build_attack_validation_context,
+    build_deterministic_candidates,
     canonical_json_sha256,
     evaluate_scenario,
     run_attack,
@@ -64,6 +70,7 @@ from strategy_redteam.domain import (
     Symbol,
 )
 from strategy_redteam.strategy import (
+    FixedMonthly6040Strategy,
     Strategy,
     StrategyError,
     close_prices,
@@ -155,6 +162,10 @@ class AttackerEvidenceSummary(ContractModel):
     market_summary: ReturnSummary
     failure_rules: tuple[FailureRule, ...] = Field(min_length=1, max_length=3)
     policy: AttackPolicy
+    # Read-only admissibility data.  It contains calendar identities, never prices or returns.
+    # Providers may ignore it; it makes local admissibility resolution reproducible.
+    return_dates: tuple[date, ...] = Field(default=(), max_length=10_000)
+    rebalance_dates: tuple[date, ...] = Field(default=(), max_length=10_000)
     prior_results: tuple[PriorResultSummary, ...] = Field(
         default=(),
         max_length=MAX_PRIOR_RESULT_SUMMARIES,
@@ -178,6 +189,7 @@ class ScenarioProposer(Protocol):
         *,
         prompt: str,
         evidence_summary: AttackerEvidenceSummary,
+        attack_catalog: AttackCatalog | None = None,
     ) -> str:
         """Return one UTF-8-sized JSON string validating as ``AttackBatch``."""
 
@@ -190,6 +202,7 @@ class FakeScenarioProposer:
     on_call: Callable[[], None] | None = None
     calls: list[AttackerEvidenceSummary] = field(default_factory=list)
     prompts: list[str] = field(default_factory=list)
+    attack_catalogs: list[AttackCatalog | None] = field(default_factory=list)
     _position: int = 0
 
     def propose(
@@ -197,9 +210,11 @@ class FakeScenarioProposer:
         *,
         prompt: str,
         evidence_summary: AttackerEvidenceSummary,
+        attack_catalog: AttackCatalog | None = None,
     ) -> str:
         self.prompts.append(prompt)
         self.calls.append(evidence_summary)
+        self.attack_catalogs.append(attack_catalog)
         if self.on_call is not None:
             self.on_call()
         if self._position >= len(self.responses):
@@ -222,19 +237,25 @@ class _ScenarioProposerAdapter:
         experiment: ExperimentSpec,
         market_summary: ReturnSummary,
         policy: AttackPolicy,
+        return_dates: tuple[date, ...],
+        rebalance_dates: tuple[date, ...],
+        attack_catalog: AttackCatalog | None = None,
     ) -> None:
         self._proposer = proposer
         self._prompt = prompt
         self._experiment = experiment
         self._market_summary = market_summary
         self._policy = policy
+        self._return_dates = return_dates
+        self._rebalance_dates = rebalance_dates
+        self._attack_catalog = attack_catalog
         self._candidate_slots_returned = 0
 
     @staticmethod
     def _invalid_candidate(round_number: int, detail: str) -> Mapping[str, object]:
         return {
             "scenario_id": f"invalid-batch-r{round_number:02d}",
-            "batch_validation_error": detail[:500],
+            "provider_failure": detail[:500],
         }
 
     def _summary(
@@ -270,6 +291,8 @@ class _ScenarioProposerAdapter:
             market_summary=self._market_summary,
             failure_rules=self._experiment.failure_rules,
             policy=self._policy,
+            return_dates=self._return_dates,
+            rebalance_dates=self._rebalance_dates,
             prior_results=compact_results,
         )
 
@@ -289,6 +312,7 @@ class _ScenarioProposerAdapter:
             raw = self._proposer.propose(
                 prompt=self._prompt,
                 evidence_summary=summary,
+                attack_catalog=self._attack_catalog,
             )
         except FakeClientExhausted:
             return ()
@@ -373,16 +397,50 @@ class AttackerService:
         asset_returns = prices.pct_change(fill_method=None).fillna(0.0)
         asset_returns.columns.name = "symbol"
         runtime_policy = policy.for_strategy(experiment.strategy)
+        market_dates = tuple(timestamp.date() for timestamp in dataset.data.index)
+        # The first close establishes weights and has no asset return.  It is deliberately
+        # absent from the provider-facing return-dependent calendar.
+        return_dates = market_dates[1:]
+        rebalance_dates: tuple[date, ...] = ()
+        if isinstance(strategy, FixedMonthly6040Strategy):
+            rebalance_dates = tuple(
+                timestamp.date() for timestamp in strategy.rebalance_dates(dataset)
+            )
         market_summary = summarize_asset_returns(
             asset_returns,
             experiment.numeric_tolerance,
         )
+        baseline = run_backtest(
+            dataset, strategy, experiment.transaction_cost_bps, experiment.numeric_tolerance
+        )
+        validation_context = build_attack_validation_context(
+            dataset=dataset, strategy=strategy, experiment=experiment, baseline=baseline
+        )
+        candidates = build_deterministic_candidates(
+            market_dates=market_dates,
+            policy=runtime_policy,
+            seed=experiment.seed,
+            round_number=1,
+            max_candidates=experiment.max_candidates_per_round,
+        )
+        admissible: list[StressScenario] = []
+        for candidate in candidates:
+            try:
+                StressScenario.model_validate(candidate)
+                runtime_policy.validate_scenario(candidate, context=validation_context)
+            except AttackPolicyViolation:
+                continue
+            admissible.append(candidate)
+        attack_catalog = build_attack_catalog(admissible)
         adapter = _ScenarioProposerAdapter(
             proposer=self.proposer,
             prompt=self.prompt,
             experiment=experiment,
             market_summary=market_summary,
             policy=runtime_policy,
+            return_dates=return_dates,
+            rebalance_dates=rebalance_dates,
+            attack_catalog=attack_catalog,
         )
         return run_attack(
             dataset=dataset,

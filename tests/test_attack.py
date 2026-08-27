@@ -758,6 +758,28 @@ def test_offline_proposer_is_repeatable_and_policy_valid(
         policy.validate_scenario(candidate)
 
 
+def test_shared_deterministic_candidates_and_catalog_preserve_offline_output(
+    attack_context: tuple[StoredDataset, FixedMonthly6040Strategy],
+) -> None:
+    dataset, _ = attack_context
+    policy = load_attack_policy(DEFAULT_POLICY_PATH)
+    proposer = DeterministicOfflineProposer.from_dataset(dataset, policy, seed=7)
+    expected = proposer.propose(round_number=1, max_candidates=3, prior_results=())
+    shared = attack_module.build_deterministic_candidates(
+        market_dates=proposer.market_dates,
+        policy=policy,
+        seed=7,
+        round_number=1,
+        max_candidates=3,
+    )
+    catalog = attack_module.build_attack_catalog(shared)
+    assert shared == expected
+    assert tuple(entry.attack_key for entry in catalog.entries) == (
+        "atk_001", "atk_002", "atk_003"
+    )
+    assert tuple(entry.scenario for entry in catalog.entries) == shared
+
+
 def test_runner_source_has_only_bounded_round_and_candidate_loops() -> None:
     """The orchestration function has no while, recursion, or open-ended agent loop."""
     tree = ast.parse(inspect.getsource(attack_module.run_attack))
