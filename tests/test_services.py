@@ -19,6 +19,7 @@ from strategy_redteam import (
     ATTACKER_PROMPT_PATH,
     DEFENDER_PROMPT_PATH,
     AdjustmentPolicy,
+    ApplicationBoundaryError,
     AttackBatch,
     AttackerService,
     AttackPolicy,
@@ -238,6 +239,45 @@ def test_attacker_service_forwards_prevalidated_immutable_catalog(tmp_path: Path
     for entry in catalog.entries:
         assert isinstance(entry.scenario, StressScenario)
         context.policy.validate_scenario(entry.scenario)
+
+
+def test_catalog_excludes_first_row_asset_return_stress_using_runtime_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The run-023 source check is reused before a candidate enters the catalog."""
+    context = _context(tmp_path)
+    first_row_gap = _gap(context, "run-023-first-row", -0.40, position=0)
+    monkeypatch.setattr(
+        services_module, "build_deterministic_candidates", lambda **_: (first_row_gap,)
+    )
+    proposer = FakeScenarioProposer((_batch(context, _gap(context, "valid", -0.40)),))
+
+    _attack(tmp_path, context, proposer)
+
+    assert proposer.attack_catalogs[0] is not None
+    assert proposer.attack_catalogs[0].entries == ()
+
+
+def test_every_service_catalog_entry_passes_shared_runtime_preflight(tmp_path: Path) -> None:
+    """Representative deterministic candidates cannot immediately reject before evaluation."""
+    context = _context(tmp_path)
+    proposer = FakeScenarioProposer((_batch(context, _gap(context, "catalog-check", -0.40)),))
+    _attack(tmp_path, context, proposer)
+    catalog = proposer.attack_catalogs[0]
+    assert catalog is not None
+    baseline = services_module.run_backtest(
+        context.dataset,
+        context.strategy,
+        context.experiment.transaction_cost_bps,
+        context.experiment.numeric_tolerance,
+    )
+    for entry in catalog.entries:
+        services_module.validate_scenario_runtime_admissibility(
+            dataset=context.dataset,
+            baseline_asset_returns=baseline.asset_returns,
+            scenario=entry.scenario,
+            experiment=context.experiment,
+        )
 
 
 @pytest.mark.parametrize("family", ["transaction_cost_multiplier", "volatility_multiplier"])
@@ -484,6 +524,35 @@ def test_unsupported_causal_claim_is_rejected_without_dropping_replay(
     assert "broader attacker causal narrative remains unverifiable" in (
         defended.report.scenario_explanations["bad-cause"]
     )
+
+
+def test_report_writer_boundary_failure_rejects_narrative_without_dropping_replay(
+    tmp_path: Path,
+) -> None:
+    """A run-022-style schema failure cannot abort deterministic defender evidence."""
+    context = _context(tmp_path)
+    run = _attack(
+        tmp_path,
+        context,
+        FakeScenarioProposer((_batch(context, _gap(context, "run-022", -0.40)),)),
+    )
+
+    class InvalidNarrativeWriter:
+        def write(self, *, prompt: str, evidence_summary: object) -> str:
+            del prompt, evidence_summary
+            raise ApplicationBoundaryError("raw invalid model response must not leak")
+
+    defended = DefenderService(
+        store=context.store, report_writer=InvalidNarrativeWriter()  # type: ignore[arg-type]
+    ).defend(attack_run=run, manifest_path=context.manifest_path)
+
+    assert defended.verdicts[0].verdict is DefenderVerdictValue.REPRODUCED
+    assert defended.replay_records
+    assert defended.report.verified_results
+    assert defended.accepted_assessments == ()
+    assert defended.narrative_rejections == ("Report writer structured output validation failed.",)
+    assert "raw invalid" not in " ".join(defended.narrative_rejections)
+    assert "broader attacker causal narrative remains unverifiable" in defended.markdown
 
 
 def test_prompt_injection_headline_cannot_choose_path_or_execute(

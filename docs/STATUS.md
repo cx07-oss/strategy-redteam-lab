@@ -1764,3 +1764,146 @@ pending a successful real local smoke.
 - Phase 3 must replace the current Ollama numerical proposal path with bounded catalog-key
   selection, then a genuine bounded local Ollama smoke must confirm a valid deterministic
   evaluation.  Gate 12E must not be accepted before that work and smoke complete.
+
+## Gate 12E catalog refactor — Phase 3A
+
+**State:** Implemented and network-free verified locally on 2026-08-27; Phase 3 and Gate 12E
+remain incomplete.
+
+- The active `OllamaScenarioProposer` path now requires the prevalidated non-empty
+  `AttackCatalog`. It derives fixed `choice_NN` slots from the application-owned candidate and
+  remaining-scenario bounds, capped by catalog size, and makes exactly one JSON-mode,
+  `think=False` Ollama request.
+- The model sees finite plain-text, read-only catalog summaries and can return only exact unique
+  catalog keys. Unknown, missing, extra, duplicate, and numerical fields fail closed with no
+  repair or retry. Missing or empty catalogs fail closed before any model call.
+- Selected entries are resolved application-side, copied unchanged except for application-owned
+  `ollama-rRR-cCC` scenario IDs, and then pass through the existing canonical attack flow. The
+  legacy two-stage numerical helpers remain present but are no longer called by production Ollama
+  proposal execution. Deterministic and Foundry providers were not changed.
+
+### Validation
+
+- `.venv\\Scripts\\python.exe -m pytest -q tests/test_ollama_clients.py tests/test_services.py tests/test_attack.py --basetemp="$pytestTmp"`:
+  **PASS; 42 passed in 17.18s** (fresh external temporary directory; no network/model calls).
+- `.venv\\Scripts\\python.exe -m ruff check .`: **PASS; All checks passed!**
+- `.venv\\Scripts\\python.exe -m mypy src`: **PASS; Success: no issues found in 20 source files.**
+- `git diff --check`: **PASS** (exit code 0; existing line-ending warnings only).
+
+### Remaining risk
+
+- Phase 3B must remove obsolete two-stage Ollama helpers and tests only after the new selection
+  path has a bounded real local Ollama smoke. No real Ollama call was made for Phase 3A.
+
+## Gate 12E catalog refactor — Phase 3B cleanup
+
+**State:** Implemented and statically/network-free verified locally on 2026-08-27; Gate 12E
+remains incomplete pending real local Ollama acceptance smoke.
+
+- Phases 1, 2A, and 2B remain complete. Phase 3 catalog-key selection is implemented: Ollama no
+  longer generates numerical stress parameters, dates, selectors, component order, or scenario
+  IDs. A valid proposal makes one bounded JSON-mode (`format="json"`, `think=False`) selection
+  call and resolves only strict `choice_NN` keys against the prevalidated deterministic catalog.
+- Removed the obsolete two-stage template/numerical-generation models, prompts, selector mapping,
+  dynamic payload/schema generation, correction/retry loop, and Stage 1/Stage 2 diagnostics. The
+  local selection boundary remains strict and fail-closed; selected scenario values are copied
+  unchanged except for application-owned final IDs.
+- Deterministic and Foundry providers are unchanged.
+
+### Validation
+
+- `.venv\\Scripts\\python.exe -m pytest -q --basetemp="$pytestTmp"`: **PASS; 189 passed in
+  74.14s** (fresh external temporary directory; no network/model calls).
+- `.venv\\Scripts\\python.exe -m ruff check .`: **PASS; All checks passed!**
+- `.venv\\Scripts\\python.exe -m mypy src`: **PASS; Success: no issues found in 20 source files.**
+- `git diff --check`: **PASS** (exit code 0; existing line-ending warnings only).
+
+### Remaining risk
+
+- A bounded real local Ollama smoke must still show a valid catalog-key selection reaches
+  deterministic evaluation. Gate 12E must not be accepted until that smoke passes.
+
+## Gate 12E defender narrative boundary repair — run-022
+
+**State:** Implemented and network-free verified locally on 2026-08-27; Gate 12E remains
+incomplete pending a fresh real local Ollama smoke and artifact export.
+
+- The Phase 3 catalog-key attacker path remains implemented. Genuine run-022 progressed to
+  defender narrative generation, where Ollama returned a schema-invalid verified claim without a
+  typed mechanism. The `DefenderNarrativeBatch` validator remains strict and unchanged.
+- Provider-neutral `ApplicationBoundaryError` failures from a report writer now fail closed at the
+  service narrative boundary: no causal assessment is accepted, one fixed safe rejection is
+  recorded, and deterministic replay/verdict/report evidence continues. No model response,
+  validation payload, prompt, or exception content is retained in the rejection.
+- Deterministic and Foundry report-writer valid-output behavior is unchanged. The numerical
+  engine, attack metrics, replay evidence, and catalog construction are unchanged.
+
+### Validation
+
+- Focused `.venv\\Scripts\\python.exe -m pytest -q tests/test_services.py tests/test_ollama_clients.py tests/test_offline.py --basetemp="$pytestTmp"`:
+  **PASS; 32 passed in 27.74s** (fresh external temporary directory; no network/model calls).
+- `.venv\\Scripts\\python.exe -m pytest -q --basetemp="$pytestTmp"`: **PASS; 190 passed in
+  74.85s** (fresh external temporary directory; no network/model calls).
+- `.venv\\Scripts\\python.exe -m ruff check .`: **PASS; All checks passed!**
+- `.venv\\Scripts\\python.exe -m mypy src`: **PASS; Success: no issues found in 20 source files.**
+- `git diff --check`: **PASS** (exit code 0; existing line-ending warnings only).
+
+### Remaining risk
+
+- Rerun the real local Ollama smoke using a fresh output directory. Gate 12E remains unaccepted
+  until it produces at least one valid evaluated scenario with metrics and chart points and
+  completes artifact export.
+
+## Gate 12E catalog runtime-admissibility repair — run-023
+
+**State:** Implemented and network-free verified locally on 2026-08-27; Gate 12E remains
+incomplete pending a fresh real local Ollama smoke.
+
+- Genuine run-023 proved the Phase 3 catalog selection path reaches deterministic evaluation: a
+  selected scenario was valid with metrics and 81 chart points, produced three breaches, and the
+  CLI reported one verified failure. The same run exposed a catalog/runtime validation gap when a
+  catalog entry changed the first asset-return row and was later rejected as invalid data.
+- The source check is the backtest return-frame validator's first-row-zero requirement. Catalog
+  admission previously performed only canonical and policy/context validation, so it did not run
+  the stress transform followed by that authoritative return-frame check.
+- A shared provider-neutral runtime-admissibility preflight now performs the existing stress
+  transform and existing backtest return validation. Both catalog admission and normal scenario
+  evaluation use it; first-row-invalid candidates are omitted without repair. Deterministic and
+  Foundry behavior, catalog-key selection, prompts, and numerical semantics remain unchanged.
+
+### Validation
+
+- Focused `.venv\\Scripts\\python.exe -m pytest -q tests/test_services.py tests/test_attack.py tests/test_ollama_clients.py --basetemp="$pytestTmp"`:
+  **PASS; 45 passed** (fresh external temporary directory; no network/model calls).
+- `.venv\\Scripts\\python.exe -m pytest -q --basetemp="$pytestTmp"`: **PASS; 192 passed in
+  96.77s** (fresh external temporary directory; no network/model calls).
+- `.venv\\Scripts\\python.exe -m ruff check .`: **PASS; All checks passed!**
+- `.venv\\Scripts\\python.exe -m mypy src`: **PASS; Success: no issues found in 20 source files.**
+- `git diff --check`: **PASS** (exit code 0; existing line-ending warnings only).
+
+### Remaining risk
+
+- A fresh real local Ollama smoke must confirm that no selected catalog entry is immediately
+  rejected under the repaired invariant before Gate 12E can close.
+
+## Gate 12E — local Ollama acceptance
+
+**State:** Complete on 2026-08-27.
+
+- Genuine local acceptance run: `artifacts/demo/ollama-run-024`, provider `ollama`, model
+  `qwen3:4b`. Ollama acts only as a bounded adversarial catalog selector: the valid path makes one
+  JSON-mode call with `format="json"` and `think=False`.
+- Python owns deterministic candidate construction, all numerical stress values, policy/runtime
+  admissibility, dates, component order, final IDs, and deterministic evaluation. Ollama cannot
+  generate raw numerical stress parameters.
+- The selected `ollama-r01-c01` was valid with metrics and 81 chart points, triggered three
+  risk-limit breaches (maximum normalized excess `1.198637511934236`), and defender replay
+  reproduced it. The CLI recorded `status=verified` and `verified_failures=1`.
+- The run completed its replay and verification events. It contains no immediate first-dataset-row
+  invalid-data rejection; the run-023 catalog/runtime validation gap was repaired before this run.
+  Earlier failed runs remain debugging evidence, not acceptance evidence.
+
+### Next gate
+
+- Gate 13A is unblocked: **Next.js frontend foundation / Verified Run Replay**. It is not
+  implemented in this gate.

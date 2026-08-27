@@ -28,6 +28,7 @@ from strategy_redteam.backtest import (
     BacktestResult,
     run_backtest,
     run_backtest_with_asset_returns,
+    validate_supplied_asset_returns,
 )
 from strategy_redteam.data import StoredDataset, canonical_manifest_bytes
 from strategy_redteam.domain import (
@@ -64,6 +65,7 @@ from strategy_redteam.stress import (
     StressArithmeticError,
     StressCorrelationError,
     StressTransformError,
+    StressTransformResult,
     StressValidationError,
     StressWindowError,
     apply_stress_scenario,
@@ -1543,6 +1545,25 @@ def _linked_window_evidence(
     )
 
 
+def validate_scenario_runtime_admissibility(
+    *,
+    dataset: StoredDataset,
+    baseline_asset_returns: pd.DataFrame,
+    scenario: StressScenario,
+    experiment: ExperimentSpec,
+) -> StressTransformResult:
+    """Run the shared pre-backtest checks required for any meaningful evaluation."""
+    transform = apply_stress_scenario(
+        baseline_asset_returns,
+        scenario,
+        experiment.transaction_cost_bps,
+        experiment.numeric_tolerance,
+        experiment.seed,
+    )
+    validate_supplied_asset_returns(dataset, transform.stressed_asset_returns)
+    return transform
+
+
 def _evaluate_scenario(
     *,
     dataset: StoredDataset,
@@ -1556,12 +1577,11 @@ def _evaluate_scenario(
 ) -> ScenarioEvaluationRecord:
     input_sha256 = canonical_json_sha256(scenario)
     try:
-        transform = apply_stress_scenario(
-            baseline.asset_returns,
-            scenario,
-            experiment.transaction_cost_bps,
-            experiment.numeric_tolerance,
-            experiment.seed,
+        transform = validate_scenario_runtime_admissibility(
+            dataset=dataset,
+            baseline_asset_returns=baseline.asset_returns,
+            scenario=scenario,
+            experiment=experiment,
         )
         stressed = run_backtest_with_asset_returns(
             dataset,

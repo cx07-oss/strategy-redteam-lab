@@ -34,6 +34,7 @@ from strategy_redteam.attack import (
     canonical_json_sha256,
     evaluate_scenario,
     run_attack,
+    validate_scenario_runtime_admissibility,
 )
 from strategy_redteam.backtest import BacktestError, BacktestResult, run_backtest
 from strategy_redteam.data import (
@@ -76,7 +77,7 @@ from strategy_redteam.strategy import (
     close_prices,
     strategy_from_spec,
 )
-from strategy_redteam.stress import summarize_asset_returns
+from strategy_redteam.stress import StressTransformError, summarize_asset_returns
 
 PROMPT_DIRECTORY = Path(__file__).resolve().parents[2] / "prompts"
 ATTACKER_PROMPT_PATH = PROMPT_DIRECTORY / "attacker.md"
@@ -426,11 +427,17 @@ class AttackerService:
         admissible: list[StressScenario] = []
         for candidate in candidates:
             try:
-                StressScenario.model_validate(candidate)
-                runtime_policy.validate_scenario(candidate, context=validation_context)
-            except AttackPolicyViolation:
+                scenario = StressScenario.model_validate(candidate)
+                runtime_policy.validate_scenario(scenario, context=validation_context)
+                validate_scenario_runtime_admissibility(
+                    dataset=dataset,
+                    baseline_asset_returns=baseline.asset_returns,
+                    scenario=scenario,
+                    experiment=experiment,
+                )
+            except (AttackPolicyViolation, BacktestError, StressTransformError):
                 continue
-            admissible.append(candidate)
+            admissible.append(scenario)
         attack_catalog = build_attack_catalog(admissible)
         adapter = _ScenarioProposerAdapter(
             proposer=self.proposer,
@@ -733,6 +740,8 @@ def _audit_narrative(
         raw = writer.write(prompt=prompt, evidence_summary=evidence)
     except FakeClientExhausted:
         return (), ("Report writer returned no bounded response.",)
+    except ApplicationBoundaryError:
+        return (), ("Report writer structured output validation failed.",)
     if not isinstance(raw, str) or len(raw.encode("utf-8")) > MAX_MODEL_RESPONSE_BYTES:
         return (), ("Report writer response violated the bounded text contract.",)
     try:

@@ -292,7 +292,7 @@ def _validate_backtest_context(
         raise BacktestValidationError("backtesting requires at least two dataset rows")
 
 
-def _validate_supplied_asset_returns(
+def validate_supplied_asset_returns(
     dataset: StoredDataset,
     asset_returns: pd.DataFrame,
 ) -> pd.DataFrame:
@@ -429,7 +429,7 @@ def run_backtest_with_asset_returns(
         transaction_cost_bps,
         numeric_tolerance,
     )
-    canonical_returns = _validate_supplied_asset_returns(dataset, asset_returns)
+    canonical_returns = validate_supplied_asset_returns(dataset, asset_returns)
     if strategy.spec.kind is StrategyKind.MONTHLY_60_40:
         if not isinstance(strategy, FixedMonthly6040Strategy):
             raise BacktestValidationError(
