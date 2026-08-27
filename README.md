@@ -5,6 +5,10 @@ selects policy-valid market stresses, a deterministic Python engine evaluates a 
 strategy, and an independent defender replays failures. It is research and evaluation software
 only—never brokerage execution or investment advice.
 
+**Live Demo — Verified Run Replay:** <https://strategy-redteam-lab.vercel.app/>. This public,
+read-only application replays a verified telemetry artifact produced by the evaluation pipeline;
+it is not a live trading system and runs neither Python nor Ollama publicly.
+
 ## Why this exists
 
 LLMs are useful for adversarial prioritisation, but they should not own numerical market
@@ -109,4 +113,5 @@ See [architecture](docs/ARCHITECTURE.md), [deployment](docs/DEPLOYMENT.md), and 
 - Gate 12E complete
 - Gate 13A complete
 - Gate 13B complete
-- Gate 14A deployment readiness in progress
+- Gate 14A complete
+- Gate 14B public deployment verification complete

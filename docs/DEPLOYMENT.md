@@ -1,17 +1,34 @@
-# Frontend deployment readiness
+# Frontend deployment
 
 ## Recommendation
 
-Deploy the `frontend/` application to **Vercel**. It is the lowest-complexity target for this
-Next.js App Router replay: Vercel runs the standard `next build` output without adding hosting
-configuration or a runtime service. **Azure Static Web Apps** is the fallback when Azure hosting
-is preferred; use its Next.js-compatible managed-hosting configuration rather than changing this
-repository to a static export.
+The verified replay is deployed to **Vercel** at
+<https://strategy-redteam-lab.vercel.app/>. It is the lowest-complexity target for this Next.js
+App Router replay: Vercel runs the standard `next build` output without adding hosting
+configuration or a runtime service. **Azure Static Web Apps** remains the fallback when Azure
+hosting is preferred; use its Next.js-compatible managed-hosting configuration rather than
+changing this repository to a static export.
 
 The deployment covers only the verified, read-only dashboard. It does not deploy the Python
 engine, Ollama, Foundry agents, market-data ingestion, or any trading capability.
 
-## Vercel manual deployment
+## Production deployment record
+
+| Setting | Production value |
+| --- | --- |
+| Platform | Vercel |
+| Repository | `cx07-oss/strategy-redteam-lab` |
+| Live URL / verified replay route | <https://strategy-redteam-lab.vercel.app/> (`/`) |
+| Root directory | `frontend` |
+| Framework / package manager | Next.js / pnpm |
+| Environment variables | None |
+| Runtime dependencies | No Python backend, Ollama, or model credentials |
+
+The production route was verified to render run-024 evidence: `ollama-r01-c01`, three breaches,
+maximum normalized excess `1.1986`, 81 chart points, the canonical `one_day_gap` attack, a
+`reproduced` defender verdict, replay delta `0.0`, and the ordered telemetry timeline.
+
+## Vercel deployment configuration
 
 1. Push this repository to a Git provider and import it into Vercel.
 2. Set the project root directory to `frontend`.

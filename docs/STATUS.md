@@ -2017,3 +2017,37 @@ incomplete pending a fresh real local Ollama smoke.
 ### Next gate
 
 - Gate 14B — actual public deployment and live verification.
+
+## Gate 14B — public Vercel deployment and live verification
+
+**State:** Complete on 2026-08-27.
+
+- Public Vercel deployment succeeded at <https://strategy-redteam-lab.vercel.app/>. The verified
+  production route is `/`; it serves the static, read-only Next.js replay from `frontend/`.
+- Live verification confirmed the run-024 replay renders provider `ollama`, model `qwen3:4b`,
+  valid `ollama-r01-c01`, three breaches, maximum normalized excess `1.198637511934236`, 81 chart
+  points, canonical `one_day_gap` evidence, defender replay completion, `reproduced` verdict,
+  replay delta `0.0`, and the ordered telemetry timeline.
+- The deployment has no environment variables and no runtime Python backend, Ollama process, or
+  model credentials. It is not a live trading system and does not alter evaluation artifacts.
+- No Vercel local state, account/project/team identifiers, tokens, GitHub tokens, API secrets, or
+  absolute user filesystem paths were introduced by this gate.
+
+### Validation
+
+- Live production `/` route: PASS; visible replay evidence matched the recorded run-024 values and
+  defender verification chain.
+- `frontend` with the desktop runtime Node path: `pnpm test`: PASS; **3 passed**.
+- `frontend` with the desktop runtime Node path: `pnpm lint`: PASS.
+- `frontend` with the desktop runtime Node path: `pnpm build`: PASS; Next.js 16.3.3 generated the
+  static `/` route.
+- `python -m ruff check .`: unavailable in the ambient Python environment (`ruff` is not
+  installed); the repository virtual environment command `.venv\Scripts\python.exe -m ruff check
+  .`: PASS; `All checks passed!`.
+- `python -m mypy src`: likewise run through the repository virtual environment:
+  `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (existing line-ending warnings only).
+
+### Next gate
+
+- Gate 15 — clean-clone / end-to-end release acceptance.
