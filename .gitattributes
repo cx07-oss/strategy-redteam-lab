@@ -1,2 +1,7 @@
 # Immutable fixture manifests are compared to their canonical byte representation.
 tests/fixtures/offline-cache/manifests/*.json text eol=lf
+# Fixed model prompt templates are consumed as UTF-8 bytes by the application.
+prompts/*.md text eol=lf
+# Release telemetry and the frontend replay fixture must remain byte-identical.
+artifacts/demo/ollama-run-024/demo-telemetry.json text eol=lf
+frontend/src/fixtures/demo-telemetry.json text eol=lf

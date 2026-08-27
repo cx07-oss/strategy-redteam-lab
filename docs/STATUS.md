@@ -2079,3 +2079,53 @@ incomplete pending a fresh real local Ollama smoke.
 
 - Full Gate 15 acceptance must be rerun from a new published commit so a fresh clone receives the
   committed `.gitattributes` rule and proves `w/lf` checkout plus the documented offline workflow.
+
+## Gate 15 repair checkpoint — byte-sensitive prompt Markdown
+
+**State:** Gate 15 remains pending on 2026-08-27.
+
+- Windows clean-clone LF preservation was extended to the fixed root-level `prompts/*.md` templates
+  consumed by the shared raw-byte prompt loader. Their Git blobs were already canonical LF; no
+  prompt content or application behaviour changed.
+
+### Validation
+
+- `tests/test_services.py::test_successful_verified_failure_uses_compact_prompts_and_engine_numbers`:
+  PASS; **1 passed in 13.50s**.
+- `.venv\Scripts\python.exe -m pytest -q --basetemp="$pytestTmp"`: PASS; **192 passed in
+  88.80s** using a fresh external temporary directory.
+- `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS.
+
+### Remaining release check
+
+- Full Gate 15 acceptance must be rerun from a new published commit.
+
+## Gate 15 repair checkpoint — release telemetry provenance
+
+**State:** Gate 15 remains pending on 2026-08-27.
+
+- The accepted authoritative run-024 telemetry at
+  `artifacts/demo/ollama-run-024/demo-telemetry.json` is now release-tracked; all other generated
+  artifact paths remain ignored. The tracked frontend fixture
+  `frontend/src/fixtures/demo-telemetry.json` remains byte-identical to that source.
+- Both byte-sensitive JSON files are forced to LF checkout. The accepted telemetry evidence was
+  inspected without regeneration and retains its recorded `ollama` / `qwen3:4b`, valid
+  `ollama-r01-c01`, three-breach, `reproduced`, zero-delta result.
+
+### Validation
+
+- `pnpm sync:fixture`: PASS; source and frontend fixture SHA-256 both
+  `898fc94cb4ace7fd7a486538686ec48b6b9d1190063f7970fdd1959d0f1ae1d9` and byte-identical.
+- `frontend`: `pnpm test`: PASS; **3 passed**. `pnpm lint`: PASS. `pnpm build`: PASS; static `/`
+  route generated.
+- `.venv\Scripts\python.exe -m pytest -q --basetemp="$pytestTmp"`: PASS; **192 passed in
+  95.90s** using a fresh external temporary directory.
+- `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS.
+
+### Remaining release check
+
+- Complete Gate 15 acceptance must be rerun from a new published clone.

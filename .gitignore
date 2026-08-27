@@ -42,8 +42,13 @@ data/cache/
 data/downloads/
 data/raw/
 
-# Generated run artifacts and reports
-artifacts/
+# Generated run artifacts and reports (except the accepted release telemetry fixture)
+artifacts/*
+!artifacts/demo/
+artifacts/demo/*
+!artifacts/demo/ollama-run-024/
+artifacts/demo/ollama-run-024/*
+!artifacts/demo/ollama-run-024/demo-telemetry.json
 runs/
 reports/generated/
 
