@@ -2129,3 +2129,35 @@ incomplete pending a fresh real local Ollama smoke.
 ### Remaining release check
 
 - Complete Gate 15 acceptance must be rerun from a new published clone.
+
+## Gate 15 — clean-clone end-to-end release acceptance
+
+**State:** Complete on 2026-08-27.
+
+**Gate 15 COMPLETE — clean-clone release acceptance passed.**
+
+- Release candidate `ebd5397b8d6f6e8939e5f53fdaf71ef42dac6b26` was frozen with clean
+  current-repository and fresh-clone Git state.
+- Windows LF contracts were verified in the fresh clone for the canonical manifest, both fixed
+  prompt sources, the release-tracked run-024 telemetry, and the frontend replay fixture
+  (`i/lf w/lf` for each).
+- A fresh Python 3.12.13 environment installed `.[dev,hosted]`; the full suite passed with
+  **192 passed in 99.72s**, Ruff passed, and mypy reported no issues in 20 source files.
+- The documented bounded offline workflow completed with verified artifacts, populated data and
+  configuration SHA-256 values, and successful artifact/schema verification; no network data or
+  model provider was used.
+- The release-tracked run-024 evidence retained the recorded reproduced, zero-delta, valid
+  three-breach result. Its SHA-256 and the frontend fixture SHA-256 both equal
+  `898fc94cb4ace7fd7a486538686ec48b6b9d1190063f7970fdd1959d0f1ae1d9`; byte equality and
+  `pnpm sync:fixture` provenance checks passed without tracked changes.
+- Fresh frontend installation, tests (**3 passed**), lint, and production build passed; Next.js
+  produced the static `/` route. No runtime Python, Ollama, model credentials, or environment
+  variables are required by the replay.
+- Clean-clone Git status and `git diff --check` passed. The tracked-content audit found no local
+  build state, deployment metadata, credentials/tokens, or active user-specific runtime paths.
+- Read-only production smoke at <https://strategy-redteam-lab.vercel.app/> returned HTTP 200 and
+  contained the expected lab title, `ollama-r01-c01`, `qwen3:4b`, and `reproduced` evidence.
+
+### Next recommended phase
+
+- Recruiter-facing frontend polish and final portfolio/repository review.
