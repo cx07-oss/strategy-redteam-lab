@@ -54,4 +54,6 @@ reports/generated/
 # Frontend package/build caches
 frontend/node_modules/
 frontend/.next/
+frontend/.vercel/
+.vercel/
 .pnpm-store/

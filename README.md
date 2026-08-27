@@ -1,75 +1,112 @@
-# Strategy Red-Team Lab
+# Trading Strategy Red-Team Lab
 
-> Research only; not investment advice. This repository stress-tests a fixed strategy and does
-> not recommend portfolios, forecast returns, or place trades.
+Trading Strategy Red-Team Lab is a bounded adversarial evaluation platform: an LLM attacker
+selects policy-valid market stresses, a deterministic Python engine evaluates a systematic
+strategy, and an independent defender replays failures. It is research and evaluation software
+only—never brokerage execution or investment advice.
 
-## Local setup
+## Why this exists
 
-Use Python 3.11 from the repository root:
+LLMs are useful for adversarial prioritisation, but they should not own numerical market
+calculations. The trust boundary is deliberate:
 
-```powershell
-py -3.11 -m venv .venv
-& '.\.venv\Scripts\python.exe' -m pip install -e '.[dev,hosted]'
+| LLM owns | Python owns |
+| --- | --- |
+| Attack selection and prioritisation | Scenario construction, numeric stress parameters, dates, IDs, policy validation, backtesting, risk metrics, and replay verification |
+
+## Architecture
+
+```mermaid
+flowchart LR
+  A[Immutable data and config] --> B[Deterministic candidate generation]
+  B --> C[Policy validation]
+  C --> D[Prevalidated AttackCatalog]
+  D --> E[Ollama selects an attack key]
+  E --> F[Deterministic stress and backtest]
+  F --> G[Risk-limit breaches]
+  G --> H[Independent defender replay]
+  H --> I[Verified telemetry]
+  I --> J[Next.js replay dashboard]
 ```
 
-The local run is deterministic and offline. It uses no Azure service or model client.
+## Verified result
 
-## Offline demo
+The checked-in `ollama-run-024` evidence records one bounded `qwen3:4b` catalog-selection call.
+Scenario `ollama-r01-c01` was a valid evaluation with three breaches, maximum normalized excess
+of `1.1986`, and 81 chart points. The defender reproduced the result with replay delta `0.0`.
+This is evidence of a configured stress-test failure, not a claim of trading alpha or profitability.
 
-Run the checked-in correlation-break fixture:
+## Frontend replay
 
-```powershell
-& '.\.venv\Scripts\redteam.exe' run `
-  --experiment config\example_60_40.yaml `
-  --dataset tests\fixtures\offline-cache\manifests\correlation-break.json `
-  --mode offline `
-  --output artifacts\offline-fixture
+The read-only Next.js dashboard renders baseline versus stressed equity, drawdown, the canonical
+selected attack, breach events, defender replay, and provenance hashes. It builds from a
+checked-in verified telemetry fixture; it does not require the Python backend, Ollama, model
+credentials, or a user-specific path at runtime.
+
+## Technology
+
+- Python 3.11, Pydantic v2, pandas/NumPy, pytest, Ruff, mypy, and Typer
+- Ollama with `qwen3:4b` for the verified local catalog-selection run
+- Optional Microsoft Foundry hosted-agent support
+- Next.js 16, React 19, TypeScript, and pnpm
+
+## Repository structure
+
+```text
+src/strategy_redteam/  deterministic engine, policies, providers, and replay services
+tests/                 fixed, network-free acceptance fixtures and tests
+config/                serialised experiment configuration
+artifacts/demo/        verified demo telemetry source
+frontend/              static, read-only verified-run dashboard
+docs/                  specification, architecture, deployment, and status records
 ```
 
-The output directory is immutable and must not already exist. A successful command prints
-`status=verified`; any schema, dataset hash, defender replay, or artifact-integrity failure returns
-a nonzero exit code. Review the independently replayed report—not the attacker draft:
+## Run locally
 
-```powershell
-Get-Content artifacts\offline-fixture\failure_report.md
+Use Python 3.11 for the backend. Create and activate a virtual environment, then install the
+project with its development extras according to your platform's Python tooling.
+
+```sh
+python -m pytest -q
 ```
 
-The fixture has a known switch from negatively correlated, lower-volatility SPY/TLT returns to
-positively correlated, higher-volatility returns. The report must connect the explicit stress,
-both sleeves' linked contributions, a named rule and onset date, and reproduction from the same
-dataset/config hashes. A statement such as “the Sharpe ratio fell” is not sufficient.
+For the frontend:
 
-For a separate manual real-data example, first download SPY/TLT into the ignored immutable cache:
-
-```powershell
-& '.\.venv\Scripts\redteam.exe' data download `
-  --start 2020-01-02 `
-  --end 2024-12-31
+```sh
+cd frontend
+pnpm install --frozen-lockfile
+pnpm sync:fixture
+pnpm test
+pnpm lint
+pnpm build
+pnpm dev
 ```
 
-Copy the emitted manifest path into `--dataset` and choose a new output directory:
+The verified local Ollama demo is an explicit manual action and requires a running local Ollama
+server plus an experiment config whose provider is `ollama`:
 
-```powershell
-& '.\.venv\Scripts\redteam.exe' run `
-  --experiment config\example_60_40.yaml `
-  --dataset '<emitted .data-cache manifest path>' `
-  --mode offline `
-  --output artifacts\offline-spy-tlt
+```sh
+redteam demo run --experiment config/demo_ollama_60_40.yaml --dataset tests/fixtures/offline-cache/manifests/correlation-break.json --output artifacts/demo/ollama-run-local
 ```
 
-The download is an explicit manual network action. Tests use only the fixed local fixture and do
-not assert live market values.
+Choose a new output directory; completed artifact bundles are immutable.
 
-## Verified local-Ollama demo telemetry
+## Reproducibility and safety
 
-Set `model_provider.provider: ollama` in a copy of the experiment YAML and configure the local
-model with `STRATEGY_REDTEAM_OLLAMA_MODEL`. Then run one bounded, immutable demo bundle:
+- Immutable data and configuration use SHA-256 provenance.
+- The numerical engine is deterministic and records its seed.
+- Rounds, candidates, scenarios, replays, model calls, and wall-clock time are bounded.
+- Model-generated text is untrusted data: it is never executed as code, commands, paths, or URLs.
+- Typed validation fails closed; invalid inputs are rejected rather than repaired.
+- The defender independently reloads evidence and replays selected failures.
+- Telemetry and artifacts preserve the hashes and verdicts needed to audit a result.
 
-```powershell
-& '.\.venv\Scripts\redteam.exe' demo run --experiment <ollama-experiment.yaml> --dataset tests\fixtures\offline-cache\manifests\correlation-break.json --output artifacts\demo\ollama-run-001
-```
+See [architecture](docs/ARCHITECTURE.md), [deployment](docs/DEPLOYMENT.md), and the frozen
+[specification](docs/SPEC.md) for the detailed contracts.
 
-It runs the real attacker, deterministic engine, and independent defender before exporting the
-canonical `artifacts\demo\ollama-run-001\demo-telemetry.json`. The JSON validates as Gate 12D
-`RunTelemetry`; it contains only typed, verified evidence. Ollama proposals are not deterministic;
-the dataset/config hashes, seed, validated parameters, and engine results are recorded.
+## Current status
+
+- Gate 12E complete
+- Gate 13A complete
+- Gate 13B complete
+- Gate 14A deployment readiness in progress

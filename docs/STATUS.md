@@ -1982,3 +1982,38 @@ incomplete pending a fresh real local Ollama smoke.
 ### Next gate
 
 - Gate 14 remains: **deployment + recruiter-facing documentation**. No deployment is claimed.
+
+## Gate 14A — deployment readiness and recruiter-facing documentation
+
+**State:** Complete on 2026-08-27. No public deployment occurred.
+
+- Replaced the root README with a concise recruiter-facing overview of the research-only product,
+  deterministic/LLM authority split, architecture, verified run-024 result, technology, local
+  commands, reproducibility controls, and current gate status.
+- Added `docs/ARCHITECTURE.md` to record provider responsibilities, typed trust boundaries,
+  actual bounds, the one-call valid Ollama catalog-selection path, and defender verification.
+- Added `docs/DEPLOYMENT.md` with Vercel as the preferred frontend target and Azure Static Web
+  Apps as the fallback. The standalone replay deploys from `frontend/` with Node 22, pnpm, and no
+  environment variables; it has no Python, Ollama, credentials, or local-path runtime dependency.
+- Updated frontend metadata and viewport configuration and ignored Vercel local deployment state.
+  The existing Next.js deployment mode was retained; no static-export or visual redesign was made.
+- The tracked production fixture remains `frontend/src/fixtures/demo-telemetry.json`; it is synced
+  byte-for-byte from the run-024 artifact. The lockfile remains tracked. A tracked-file scan found
+  no runtime absolute user path or credential material; historical status records retain prior
+  local command paths and test fixtures retain synthetic private-key marker bytes.
+
+### Validation
+
+- `frontend` with the desktop runtime Node path: `pnpm test`: PASS; **3 passed**.
+- `frontend` with the desktop runtime Node path: `pnpm lint`: PASS.
+- `frontend` with the desktop runtime Node path: `pnpm build`: PASS; Next.js 16.3.3 completed the
+  optimised production build.
+- `.venv\Scripts\python.exe -m pytest -q --basetemp="$pytestTmp"`: PASS; **192 passed** using a
+  fresh external temporary directory.
+- `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (existing line-ending warnings only).
+
+### Next gate
+
+- Gate 14B — actual public deployment and live verification.
