@@ -50,3 +50,8 @@ reports/generated/
 # Logs and local telemetry
 *.log
 .otel/
+
+# Frontend package/build caches
+frontend/node_modules/
+frontend/.next/
+.pnpm-store/

@@ -7,7 +7,10 @@ export type ChartPoint = Readonly<{
 
 export type Evaluation = Readonly<{
   roundNumber: number;
-  scenario: string;
+  scenario: Readonly<{
+    scenarioId: string;
+    components: readonly ScenarioComponent[];
+  }>;
   result: Readonly<{
     scenarioId: string;
     status: "valid" | "rejected";
@@ -18,6 +21,18 @@ export type Evaluation = Readonly<{
     metrics: Record<string, unknown> | null;
   }>;
   chartPoints: readonly ChartPoint[];
+}>;
+
+export type ScenarioComponent = Readonly<{
+  family: string;
+  date: string | null;
+  shocks: Readonly<Record<string, number>> | null;
+}>;
+
+export type DefenderVerdict = Readonly<{
+  scenarioId: string;
+  verdict: string;
+  maxMetricDelta: number;
 }>;
 
 export type TelemetryEvent = Readonly<{
@@ -35,6 +50,7 @@ export type RunTelemetry = Readonly<{
   configSha256: string;
   events: readonly TelemetryEvent[];
   evaluations: readonly Evaluation[];
+  defenderVerdicts: readonly DefenderVerdict[];
 }>;
 
 type JsonObject = Record<string, unknown>;
@@ -71,6 +87,12 @@ function integer(value: unknown, path: string, nullable = false): number | null 
   return parsed;
 }
 
+function numericRecord(value: unknown, path: string): Readonly<Record<string, number>> | null {
+  if (value === null) return null;
+  const candidate = object(value, path);
+  return Object.fromEntries(Object.entries(candidate).map(([key, item]) => [key, number(item, `${path}.${key}`)!]));
+}
+
 function parseChartPoint(value: unknown, index: number): ChartPoint {
   const point = object(value, `evaluations[].chart_points[${index}]`);
   return {
@@ -88,9 +110,18 @@ function parseEvaluation(value: unknown, index: number): Evaluation {
   if (status !== "valid" && status !== "rejected") fail("result.status", "expected valid or rejected");
   const metrics = result.metrics;
   if (metrics !== null && (typeof metrics !== "object" || Array.isArray(metrics))) fail("result.metrics", "expected object or null");
+  const scenario = object(evaluation.scenario, "evaluation.scenario");
+  const components = array(scenario.components, "scenario.components").map((value, componentIndex) => {
+    const component = object(value, `scenario.components[${componentIndex}]`);
+    return {
+      family: text(component.family, "scenario.component.family")!,
+      date: text(component.date, "scenario.component.date", true),
+      shocks: numericRecord(component.shocks, "scenario.component.shocks"),
+    };
+  });
   return {
     roundNumber: integer(evaluation.round_number, "evaluation.round_number")!,
-    scenario: text(object(evaluation.scenario, "evaluation.scenario").scenario_id, "scenario.scenario_id")!,
+    scenario: { scenarioId: text(scenario.scenario_id, "scenario.scenario_id")!, components },
     result: {
       scenarioId: text(result.scenario_id, "result.scenario_id")!,
       status,
@@ -116,6 +147,14 @@ export function parseRunTelemetry(value: unknown): RunTelemetry {
     };
   }).sort((left, right) => left.sequence - right.sequence);
   if (events.some((event, index) => event.sequence !== index + 1)) fail("events", "sequence must be contiguous from one");
+  const defenderVerdicts = array(run.defender_verdicts, "defender_verdicts").map((value, index) => {
+    const verdict = object(value, `defender_verdicts[${index}]`);
+    return {
+      scenarioId: text(verdict.scenario_id, "defender_verdict.scenario_id")!,
+      verdict: text(verdict.verdict, "defender_verdict.verdict")!,
+      maxMetricDelta: number(verdict.max_metric_delta, "defender_verdict.max_metric_delta")!,
+    };
+  });
   return {
     provider: text(run.provider, "provider")!,
     modelIdentifier: text(run.model_identifier, "model_identifier", true),
@@ -124,6 +163,7 @@ export function parseRunTelemetry(value: unknown): RunTelemetry {
     configSha256: text(run.config_sha256, "config_sha256")!,
     events,
     evaluations: array(run.evaluations, "evaluations").map(parseEvaluation),
+    defenderVerdicts,
   };
 }
 

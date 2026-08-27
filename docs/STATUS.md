@@ -1944,3 +1944,41 @@ incomplete pending a fresh real local Ollama smoke.
 ### Next gate
 
 - Gate 13B remains: **richer dashboard / interaction / polish**. No deployment is claimed.
+
+## Gate 13B — Verified Run Replay dashboard interaction and analytical clarity
+
+**State:** Complete on 2026-08-27.
+
+- The existing read-only static replay is now structured as a quantitative-analysis dashboard:
+  run overview, key results, a focused performance chart, canonical selected attack, breach
+  analysis, defender verification chain, usable provenance, and phase-labelled event timeline.
+- Extended the fail-closed TypeScript telemetry parser only for fields displayed in this gate:
+  canonical scenario components (family/date/numeric shocks) and defender verdict/replay metric
+  delta. All number values still originate in validated telemetry; no model narrative is used.
+- Added an accessible client-side Equity/Drawdown segmented control. The inline SVG retains raw
+  telemetry points without smoothing; hover or keyboard focus exposes exact point values. No
+  charting, state-management, UI, or animation dependency was added.
+- The selected attack is rendered as the canonical `one_day_gap` component and its recorded
+  numeric shocks, alongside the explicit boundary that Ollama selected a prevalidated attack and
+  Python owns its numerical scenario and deterministic evaluation.
+- Breach analysis renders exactly the three canonical `risk_limit_breached` events. The defender
+  flow shows selection -> deterministic evaluation -> breach -> replay -> `reproduced`, with
+  telemetry replay metric delta `0.0`. Timeline event order remains canonical by sequence and
+  highlights breach, replay completion, verification completion, and run completion.
+
+### Validation
+
+- `frontend`: `pnpm test`: PASS; **3 passed**. Added assertions for `reproduced`, zero replay
+  delta, exact scenario shock, and exactly three risk-limit breach events; existing malformed and
+  rejected-evaluation checks remain.
+- `frontend`: `pnpm lint`: PASS.
+- `frontend`: `pnpm build`: PASS; Next.js generated the static `/` replay route.
+- `.venv\\Scripts\\python.exe -m pytest -q --basetemp="$pytestTmp"`: PASS; **192 passed** using
+  a fresh external temporary directory (approximately 75 seconds of test execution).
+- `.venv\\Scripts\\python.exe -m ruff check .`: PASS; `All checks passed!`.
+- `.venv\\Scripts\\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS (existing line-ending warnings only).
+
+### Next gate
+
+- Gate 14 remains: **deployment + recruiter-facing documentation**. No deployment is claimed.
