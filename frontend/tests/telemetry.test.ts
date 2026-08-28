@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fixture from "../src/fixtures/demo-telemetry.json" with { type: "json" };
+import run025Fixture from "../src/fixtures/demo-telemetry-run-025.json" with { type: "json" };
+import { defaultVerifiedRun, verifiedRuns } from "../src/lib/verified-runs.ts";
+import { maximumStressedDrawdown, stressImpact } from "../src/lib/presentation-metrics.ts";
 import { parseRunTelemetry, selectValidEvaluation } from "../src/lib/telemetry.ts";
 
 test("run-024 fixture parses and exposes verified deterministic evidence", () => {
@@ -25,4 +28,22 @@ test("rejected scenarios never become the selected valid evaluation", () => {
   const run = parseRunTelemetry(fixture);
   const rejectedOnly = { ...run, evaluations: [{ ...run.evaluations[0], result: { ...run.evaluations[0].result, status: "rejected" as const } }] };
   assert.throws(() => selectValidEvaluation(rejectedOnly), /no valid evaluation/);
+});
+
+test("verified scenario bank exposes only the default and accepted moderate replay", () => {
+  assert.equal(defaultVerifiedRun.id, "run-024");
+  assert.deepEqual(verifiedRuns.map((entry) => entry.evaluation.result.scenarioId), ["ollama-r01-c01", "ollama-r01-c02"]);
+  assert.equal(verifiedRuns.some((entry) => entry.evaluation.result.status === "rejected"), false);
+  const moderate = verifiedRuns[1]!;
+  assert.equal(moderate.label, "Moderate one-day gap");
+  assert.equal(moderate.evaluation.result.breachCount, 3);
+  assert.equal(moderate.run.defenderVerdicts.find((verdict) => verdict.scenarioId === "ollama-r01-c02")?.verdict, "reproduced");
+});
+
+test("presentation derivations use validated run-024 chart evidence", () => {
+  const run = parseRunTelemetry(fixture);
+  const evaluation = selectValidEvaluation(run);
+  assert.ok(Math.abs(stressImpact(evaluation) - -0.1245) < 0.0002);
+  assert.ok(Math.abs(maximumStressedDrawdown(evaluation) - 0.2326) < 0.0002);
+  assert.throws(() => selectValidEvaluation(parseRunTelemetry({ ...run025Fixture, evaluations: [] })), /no valid evaluation/);
 });

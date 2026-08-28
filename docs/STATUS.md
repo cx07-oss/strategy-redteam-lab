@@ -2193,3 +2193,16 @@ incomplete pending a fresh real local Ollama smoke.
   values, canonical ordering, and fail-closed parsing are unchanged; run-025 is not surfaced.
 - No backend, provider, numerical, or deployment changes occurred. Frontend tests, lint, and the
   static production build passed; the frontend remains production-ready.
+
+## Verified scenario bank / provenance
+
+**State:** Complete on 2026-08-28.
+
+- Verified scenario bank prepared. Run-024 remains the default public replay; its existing
+  `ollama-r01-c01` evaluation is joined only by precomputed verified alternate run-025
+  `ollama-r01-c02` (`Moderate one-day gap`). Rejected duplicate evaluations are not selectable.
+- Both authoritative telemetry files and their frontend fixture copies are byte-identical and
+  LF-preserved. Pure frontend presentation helpers derive stress impact and maximum stressed
+  drawdown from validated telemetry only.
+- No live model execution, backend/provider change, fixture reconstruction, or frontend redesign
+  was added in this phase.

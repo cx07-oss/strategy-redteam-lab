@@ -1,8 +1,14 @@
 import { copyFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-const source = resolve(import.meta.dirname, "../../artifacts/demo/ollama-run-024/demo-telemetry.json");
-const destination = resolve(import.meta.dirname, "../src/fixtures/demo-telemetry.json");
+const fixtures = [
+  ["../../artifacts/demo/ollama-run-024/demo-telemetry.json", "../src/fixtures/demo-telemetry.json"],
+  ["../../artifacts/demo/ollama-run-025/demo-telemetry.json", "../src/fixtures/demo-telemetry-run-025.json"],
+];
 
-await mkdir(dirname(destination), { recursive: true });
-await copyFile(source, destination);
+for (const [sourcePath, destinationPath] of fixtures) {
+  const source = resolve(import.meta.dirname, sourcePath);
+  const destination = resolve(import.meta.dirname, destinationPath);
+  await mkdir(dirname(destination), { recursive: true });
+  await copyFile(source, destination);
+}

@@ -5,3 +5,5 @@ prompts/*.md text eol=lf
 # Release telemetry and the frontend replay fixture must remain byte-identical.
 artifacts/demo/ollama-run-024/demo-telemetry.json text eol=lf
 frontend/src/fixtures/demo-telemetry.json text eol=lf
+artifacts/demo/ollama-run-025/demo-telemetry.json text eol=lf
+frontend/src/fixtures/demo-telemetry-run-025.json text eol=lf

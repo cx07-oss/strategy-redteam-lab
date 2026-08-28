@@ -172,3 +172,11 @@ export function selectValidEvaluation(run: RunTelemetry): Evaluation {
   if (!evaluation) throw new Error("Telemetry contains no valid evaluation for replay.");
   return evaluation;
 }
+
+export function selectVerifiedEvaluation(run: RunTelemetry, scenarioId: string): Evaluation {
+  const evaluation = run.evaluations.find((candidate) => candidate.result.scenarioId === scenarioId);
+  if (!evaluation || evaluation.result.status !== "valid") {
+    throw new Error(`Telemetry contains no valid evaluation for ${scenarioId}.`);
+  }
+  return evaluation;
+}
