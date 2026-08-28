@@ -26,7 +26,12 @@ export type Evaluation = Readonly<{
 export type ScenarioComponent = Readonly<{
   family: string;
   date: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  durationRows: number | null;
   shocks: Readonly<Record<string, number>> | null;
+  volatilityMultiplier: number | null;
+  targetCorrelation: number | null;
 }>;
 
 export type DefenderVerdict = Readonly<{
@@ -116,7 +121,12 @@ function parseEvaluation(value: unknown, index: number): Evaluation {
     return {
       family: text(component.family, "scenario.component.family")!,
       date: text(component.date, "scenario.component.date", true),
+      startDate: text(component.start_date, "scenario.component.start_date", true),
+      endDate: text(component.end_date, "scenario.component.end_date", true),
+      durationRows: integer(component.duration_rows, "scenario.component.duration_rows", true),
       shocks: numericRecord(component.shocks, "scenario.component.shocks"),
+      volatilityMultiplier: number(component.volatility_multiplier, "scenario.component.volatility_multiplier", true),
+      targetCorrelation: number(component.target_correlation, "scenario.component.target_correlation", true),
     };
   });
   return {

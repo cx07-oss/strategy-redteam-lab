@@ -2230,3 +2230,37 @@ incomplete pending a fresh real local Ollama smoke.
 - `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
 - `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
 - `git diff --check`: PASS.
+
+## Diverse verified stress library
+
+**State:** Complete on 2026-08-28.
+
+- The public typed scenario catalog now has five precomputed valid entries: AI-selected run-024
+  `One-Day Gap` (default), AI-selected run-025 `Moderate One-Day Gap`, and deterministic-library
+  `Sustained Cumulative Shock`, `Volatility Spike`, and `Correlation Breakdown` entries. The latter
+  three were evaluated against the existing immutable 60/40 fixture with the existing risk rules,
+  then independently replayed as `reproduced` with zero metric delta.
+- New release telemetry artifacts and matching frontend fixtures are limited to the three accepted
+  deterministic scenarios. Their source/fixture SHA-256 pairs are byte-identical and LF-preserved:
+  sustained `db8fb2348b4814198f40bf5d372819e938d580a220767b3d74063d7818aaf9c2`, volatility
+  `27a21f03ae28cc9fc158fa9c2c2b03a33de49a12505d5c2b411c0736134fb034`, and correlation
+  `be1206ae8534cf930afca75bdcc21b2bf6ab82ad0b36541165e56c81d1cf16d2`.
+- The frontend parser now retains canonical multi-period component parameters; catalog metadata is
+  presentation-only, while values, impacts, drawdowns, results, and provenance originate from
+  validated telemetry. Rejected run-025 duplicates remain unavailable.
+- No model endpoint, Ollama call, live data/API access, backend numerical change, safety-bound
+  change, or fabricated scenario was introduced. The transaction-cost family remains excluded:
+  the recorded 60/40 configuration has a zero baseline transaction cost, so it is runtime-inadmissible.
+
+### Validation
+
+- Deterministic runs using only `tests/fixtures/offline-cache/manifests/correlation-break.json`:
+  sustained (`3` breaches, maximum normalized excess `3.6996772261962`), volatility (`2`,
+  `1.01424269930367`), and correlation (`2`, `0.929090524741751`): PASS; every selected result
+  was defender-replayed as `reproduced`, delta `0`.
+- `frontend`: `pnpm sync:fixture`: PASS. `pnpm test`: PASS; **7 passed**. `pnpm lint`: PASS.
+  `pnpm build`: PASS; static `/` route generated.
+- `.venv\Scripts\python.exe -m pytest -q --basetemp="$pytestTmp"`: PASS using a fresh external
+  temporary directory. `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
+  `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS.
