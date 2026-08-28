@@ -2206,3 +2206,27 @@ incomplete pending a fresh real local Ollama smoke.
   drawdown from validated telemetry only.
 - No live model execution, backend/provider change, fixture reconstruction, or frontend redesign
   was added in this phase.
+
+## Final product UI redesign
+
+**State:** Complete on 2026-08-28.
+
+**Final product UI redesign complete.**
+
+- Overview, How it works, and Evidence views now separate the chart-led financial result from the
+  concise trust-boundary explanation and technical release telemetry. The default remains
+  run-024 / `ollama-r01-c01`; the precomputed, independently reproduced run-025 /
+  `ollama-r01-c02` moderate scenario is available through the verified scenario explorer.
+- The Overview derives stress impact and maximum stressed drawdown from validated chart telemetry,
+  displays run-context records bound to the selected telemetry config SHA-256, and presents
+  drawdown below zero for display only. No evidence or numerical semantics changed.
+- No live model endpoint, public Python/Ollama runtime, dependency, backend, authoritative
+  telemetry, or deployment change was introduced. Vercel remains a static, read-only replay.
+
+### Validation
+
+- `frontend`: `pnpm test`: PASS; **6 passed**. `pnpm lint`: PASS. `pnpm build`: PASS; static `/`
+  route generated.
+- `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS.
