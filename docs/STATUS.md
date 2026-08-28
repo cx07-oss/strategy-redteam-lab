@@ -2181,3 +2181,15 @@ incomplete pending a fresh real local Ollama smoke.
 ### Next phase
 
 - Final portfolio / GitHub / recruiter review.
+
+## Final recruiter-facing frontend redesign
+
+**State:** Complete on 2026-08-28.
+
+- Final recruiter-facing frontend redesign complete. The production replay has a compact evidence-
+  first header, four-metric row, chart-led scenario workspace, concise trust boundary, and reduced
+  secondary timeline/provenance disclosures.
+- Run-024 remains the sole authoritative public replay. Evidence semantics, validated fixture
+  values, canonical ordering, and fail-closed parsing are unchanged; run-025 is not surfaced.
+- No backend, provider, numerical, or deployment changes occurred. Frontend tests, lint, and the
+  static production build passed; the frontend remains production-ready.
