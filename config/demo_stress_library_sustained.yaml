@@ -1,0 +1,41 @@
+schema_version: "1.0"
+experiment_id: stress-library-sustained
+strategy:
+  schema_version: "1.0"
+  strategy_id: monthly-60-40
+  kind: monthly_60_40
+  symbols: [SPY, TLT]
+  target_weights: {SPY: 0.60, TLT: 0.40}
+  rebalance_frequency: month_start
+  execution_lag_rows: 1
+  allow_short_exposure: false
+  allow_leverage: false
+  allow_missing_weights: false
+failure_rules:
+  - {schema_version: "1.0", rule_id: drawdown-limit, family: maximum_drawdown, threshold: 0.12, window_rows: null}
+  - {schema_version: "1.0", rule_id: rolling-loss-limit, family: rolling_20_day_loss, threshold: 0.08, window_rows: 20}
+  - {schema_version: "1.0", rule_id: volatility-multiple-limit, family: realized_volatility_multiple, threshold: 1.50, window_rows: 20}
+attack_policy:
+  schema_version: "1.0"
+  policy_id: stress-library-sustained-v1
+  allowed_families: [sustained_cumulative_shock]
+  numeric_ranges:
+    schema_version: "1.0"
+    one_day_gap_shock: {schema_version: "1.0", minimum: -0.15, maximum: -0.02}
+    sustained_cumulative_shock: {schema_version: "1.0", minimum: -0.25, maximum: -0.04}
+    sustained_duration_rows: {schema_version: "1.0", minimum: 5, maximum: 20}
+    volatility_multiplier: {schema_version: "1.0", minimum: 1.25, maximum: 3.00}
+    target_correlation: {schema_version: "1.0", minimum: 0.25, maximum: 0.90}
+    transaction_cost_multiplier: {schema_version: "1.0", minimum: 2.00, maximum: 5.00}
+  evidence_condition: {schema_version: "1.0", minimum_failure_scenarios: 1, minimum_breach_count: 1, minimum_maximum_normalized_excess: 0.0}
+model_provider: {schema_version: "1.0", provider: deterministic}
+seed: 20260823
+timeout_seconds: 60.0
+code_version: gate-8-offline
+numeric_tolerance: 0.000000001
+transaction_cost_bps: 0.0
+historical_window_rows: [20, 60, 126]
+max_rounds: 1
+max_candidates_per_round: 1
+max_total_scenarios: 1
+top_k: 1
