@@ -2264,3 +2264,76 @@ incomplete pending a fresh real local Ollama smoke.
   temporary directory. `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
   `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
 - `git diff --check`: PASS.
+
+## Quantitative-simulator UI
+
+**State:** Complete on 2026-08-28.
+
+**Quantitative-simulator UI complete.**
+
+- Rebuilt the static replay as a dense three-column simulation workspace: compact application bar,
+  verified-scenario sidebar, raw-telemetry equity/drawdown chart workspace, scenario inspector,
+  and bottom Overview/Risk/Verification/Event Log/Provenance analysis tabs.
+- The existing verified scenario library remains interactive and switches the inspected telemetry,
+  raw chart points, canonical parameters, risk count, defender evidence, event ordering, origin,
+  and provenance together. The UI includes only precomputed selection controls; it adds no public
+  model endpoint, simulated trading/order controls, or live inference.
+- The chart stays dependency-free: its direct SVG paths retain exact telemetry values, mouse and
+  keyboard inspection, crosshair, axis labels, tooltip, stress marker, and negative drawdown
+  display. Evidence semantics, backend numerical behavior, telemetry, and release artifacts are
+  unchanged.
+
+### Validation
+
+- `frontend`: `pnpm test`: PASS; **7 passed**. `pnpm lint`: PASS. `pnpm build`: PASS; static `/`
+  route generated.
+- `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS.
+
+## Quantitative-simulator visual refinement
+
+**State:** Complete on 2026-08-28.
+
+- Completed a visual-only art-direction pass over the approved application shell. The compact top
+  bar, Stress Lab sidebar, central chart workspace, Selected Stress inspector, and bottom analysis
+  tabs retain their structure and behavior.
+- The chart remains dependency-free and telemetry-backed. It now uses the refined finance-tool
+  surface/grid/axis treatment, two-axis crosshair with point markers, aligned tabular tooltip, and
+  semantically distinct annotations: a point marker for one-day attacks and a verified start/end
+  stress-window region for multi-period attacks. Drawdown remains a presentation-only negative
+  loss plot.
+- User-facing casing, controls, labels, status values, inspector rows, help affordances, toolbar,
+  tables, and design tokens were normalized. No telemetry, scenario metadata/evidence, backend
+  behavior, model endpoint, dependency, or simulated trading control changed.
+
+### Validation
+
+- `frontend`: `pnpm test`: PASS; **7 passed**. `pnpm lint`: PASS. `pnpm build`: PASS; static `/`
+  route generated.
+- `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS.
+
+## Quantitative-simulator typography and vertical-space refinement
+
+**State:** Complete on 2026-08-28.
+
+- Completed a finishing-only typography and vertical-density pass without changing the approved
+  application structure, scenario behavior, telemetry, numerical logic, or dependencies. The UI
+  uses local-first IBM Plex Sans / IBM Plex Mono fallback stacks; no remote font or package was
+  added.
+- Expanded the actual SVG plot bounds from five 280-unit rows to six 400-unit rows, alongside a
+  responsive desktop workspace/plot height. The sidebar navigation is bottom-anchored and the
+  low-priority inspector origin is kept in its footer, making remaining whitespace intentional.
+- Numeric, tooltip, date, technical-table, and inspector typography now uses tabular or selective
+  technical font treatment. User-facing labels and display statuses retain Title Case; internal
+  identifiers and evidence values remain unchanged.
+
+### Validation
+
+- `frontend`: `pnpm test`: PASS; **7 passed**. `pnpm lint`: PASS. `pnpm build`: PASS; static `/`
+  route generated.
+- `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
+- `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
+- `git diff --check`: PASS.
