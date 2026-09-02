@@ -186,6 +186,8 @@ VALID_COMPONENT_PAYLOADS: tuple[dict[str, object], ...] = (
     },
 )
 
+pytestmark = pytest.mark.hosted
+
 
 def _load_module(name: str, path: Path) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
