@@ -8,11 +8,12 @@ version = "0.1.0"
 description = "Typed contracts for a deterministic trading-strategy red-team lab"
 requires-python = ">=3.11"
 dependencies = [
-    "numpy>=1.26",
+    "numpy>=1.26,<2.0",
     "pandas>=2.1",
     "pyarrow>=16.1",
     "PyYAML>=6.0.2",
     "pydantic>=2.7",
+    "scikit-learn>=1.5",
     "typer>=0.12",
     "yfinance>=0.2.40",
     "ollama>=0.4",
@@ -47,6 +48,10 @@ strategy_redteam = ["py.typed"]
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers --cov=strategy_redteam --cov-report=term-missing"
 testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "hosted: optional Azure/Foundry hosted-application contract layer; no live provider call",
+]
 
 [tool.coverage.run]
 branch = true

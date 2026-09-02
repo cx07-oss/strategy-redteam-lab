@@ -23,16 +23,25 @@ from strategy_redteam.demo import DemoExportError, run_ollama_demo
 from strategy_redteam.domain import ExperimentSpec
 from strategy_redteam.offline import (
     OfflineRunError,
+    load_offline_config,
     offline_artifact_names,
     run_offline_experiment,
+)
+from strategy_redteam.research import (
+    ExecutionCostAssumptions,
+    Experiment,
+    WalkForwardConfig,
+    run_research_experiment,
 )
 from strategy_redteam.strategy import StrategyError, strategy_from_spec
 
 app = typer.Typer(help="Research-only trading-strategy red-team tools.")
 data_app = typer.Typer(help="Download, cache, and validate immutable historical datasets.")
 demo_app = typer.Typer(help="Run and export genuine verified local-Ollama demo telemetry.")
+research_app = typer.Typer(help="Run deterministic quantitative and ML research experiments.")
 app.add_typer(data_app, name="data")
 app.add_typer(demo_app, name="demo")
+app.add_typer(research_app, name="research")
 
 
 class RunMode(StrEnum):
@@ -227,6 +236,50 @@ def run_vertical_slice(
     typer.echo(f"replayed={result.replay_count}")
     typer.echo(f"verified_failures={result.verified_failure_count}")
     typer.echo("artifacts=" + ",".join(offline_artifact_names()))
+
+
+@research_app.command("run")
+def run_research(
+    experiment: Annotated[
+        Path,
+        typer.Option("--experiment", exists=True, dir_okay=False, readable=True, resolve_path=True),
+    ],
+    dataset: Annotated[
+        Path,
+        typer.Option("--dataset", exists=True, dir_okay=False, readable=True, resolve_path=True),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("--output", file_okay=False, resolve_path=True),
+    ],
+    commission_bps: Annotated[float, typer.Option(min=0.0)] = 2.0,
+    spread_bps: Annotated[float, typer.Option(min=0.0)] = 5.0,
+    slippage_bps: Annotated[float, typer.Option(min=0.0)] = 3.0,
+) -> None:
+    """Export one deterministic, provenance-bound MVP-1 research JSON artifact."""
+    result_path = output / "research-result.json"
+    try:
+        config = load_offline_config(experiment)
+        stored = LocalDatasetStore(dataset.parent.parent).validate(dataset)
+        research_experiment = Experiment(
+            experiment=config.bind_dataset(stored),
+            costs=ExecutionCostAssumptions(
+                commission_bps=commission_bps,
+                spread_bps=spread_bps,
+                slippage_bps=slippage_bps,
+            ),
+            walk_forward=WalkForwardConfig(initial_train_rows=40, test_rows=20, step_rows=20),
+        )
+        result = run_research_experiment(stored, research_experiment)
+        output.mkdir(parents=True, exist_ok=False)
+        result_path.write_bytes(result.model_dump_json(indent=2).encode("utf-8"))
+    except (OSError, ValidationError, HistoricalDataError, OfflineRunError, ValueError) as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo("status=verified")
+    typer.echo(f"research_result={result_path}")
+    typer.echo(f"data_sha256={stored.manifest.sha256}")
+    typer.echo(f"seed={result.seed}")
 
 
 @demo_app.command("run")

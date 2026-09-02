@@ -68,6 +68,9 @@ class BacktestResult:
     asset_contributions: pd.DataFrame
     gross_portfolio_returns: pd.Series
     turnover: pd.Series
+    commission_costs: pd.Series
+    spread_costs: pd.Series
+    slippage_costs: pd.Series
     transaction_costs: pd.Series
     portfolio_returns: pd.Series
     equity_curve: pd.Series
@@ -326,6 +329,9 @@ def _run_backtest_inputs(
     targets: pd.DataFrame,
     asset_returns: pd.DataFrame,
     transaction_cost_bps: float,
+    commission_bps: float,
+    spread_bps: float,
+    slippage_bps: float,
     numeric_tolerance: float,
     failure_rules: Sequence[FailureRule],
     baseline_portfolio_returns: pd.Series | None,
@@ -351,6 +357,9 @@ def _run_backtest_inputs(
     )
     turnover = effective_weights.sub(pretrade_weights).abs().sum(axis="columns")
     turnover = turnover.mask(turnover.le(numeric_tolerance), 0.0).rename("turnover")
+    commission_costs = (turnover * (commission_bps / 10_000.0)).rename("commission_cost")
+    spread_costs = (turnover * (spread_bps / 10_000.0)).rename("spread_cost")
+    slippage_costs = (turnover * (slippage_bps / 10_000.0)).rename("slippage_cost")
     transaction_costs = (turnover * (transaction_cost_bps / 10_000.0)).rename("transaction_cost")
     portfolio_returns = gross_returns.sub(transaction_costs).rename("portfolio_return")
     portfolio_values = portfolio_returns.to_numpy(dtype=np.float64, copy=False)
@@ -374,6 +383,9 @@ def _run_backtest_inputs(
         asset_contributions=asset_contributions,
         gross_portfolio_returns=gross_returns,
         turnover=turnover,
+        commission_costs=commission_costs,
+        spread_costs=spread_costs,
+        slippage_costs=slippage_costs,
         transaction_costs=transaction_costs,
         portfolio_returns=portfolio_returns,
         equity_curve=equity_curve,
@@ -390,12 +402,27 @@ def run_backtest(
     numeric_tolerance: float = DEFAULT_NUMERIC_TOLERANCE,
     failure_rules: Sequence[FailureRule] = (),
     baseline_portfolio_returns: pd.Series | None = None,
+    *,
+    commission_bps: float = 0.0,
+    spread_bps: float = 0.0,
+    slippage_bps: float = 0.0,
 ) -> BacktestResult:
     """Run one vectorized daily replay over a manifest-verified dataset."""
+    if any(
+        not np.isfinite(value) or value < 0.0
+        for value in (commission_bps, spread_bps, slippage_bps)
+    ):
+        raise BacktestValidationError("detailed cost assumptions must be finite and non-negative")
+    detailed_cost_bps = commission_bps + spread_bps + slippage_bps
+    if detailed_cost_bps and transaction_cost_bps:
+        raise BacktestValidationError(
+            "use either transaction_cost_bps or detailed cost assumptions"
+        )
+    applied_cost_bps = detailed_cost_bps or transaction_cost_bps
     _validate_backtest_context(
         dataset,
         strategy,
-        transaction_cost_bps,
+        applied_cost_bps,
         numeric_tolerance,
     )
     prices = close_prices(dataset)
@@ -406,7 +433,10 @@ def run_backtest(
         strategy,
         strategy.target_weights(dataset),
         asset_returns,
-        transaction_cost_bps,
+        applied_cost_bps,
+        commission_bps,
+        spread_bps,
+        slippage_bps,
         numeric_tolerance,
         failure_rules,
         baseline_portfolio_returns,
@@ -421,12 +451,27 @@ def run_backtest_with_asset_returns(
     numeric_tolerance: float = DEFAULT_NUMERIC_TOLERANCE,
     failure_rules: Sequence[FailureRule] = (),
     baseline_portfolio_returns: pd.Series | None = None,
+    *,
+    commission_bps: float = 0.0,
+    spread_bps: float = 0.0,
+    slippage_bps: float = 0.0,
 ) -> BacktestResult:
     """Replay a full in-memory stressed return path without mutating source prices."""
+    if any(
+        not np.isfinite(value) or value < 0.0
+        for value in (commission_bps, spread_bps, slippage_bps)
+    ):
+        raise BacktestValidationError("detailed cost assumptions must be finite and non-negative")
+    detailed_cost_bps = commission_bps + spread_bps + slippage_bps
+    if detailed_cost_bps and transaction_cost_bps:
+        raise BacktestValidationError(
+            "use either transaction_cost_bps or detailed cost assumptions"
+        )
+    applied_cost_bps = detailed_cost_bps or transaction_cost_bps
     _validate_backtest_context(
         dataset,
         strategy,
-        transaction_cost_bps,
+        applied_cost_bps,
         numeric_tolerance,
     )
     canonical_returns = validate_supplied_asset_returns(dataset, asset_returns)
@@ -451,7 +496,10 @@ def run_backtest_with_asset_returns(
         strategy,
         targets,
         canonical_returns,
-        transaction_cost_bps,
+        applied_cost_bps,
+        commission_bps,
+        spread_bps,
+        slippage_bps,
         numeric_tolerance,
         failure_rules,
         baseline_portfolio_returns,

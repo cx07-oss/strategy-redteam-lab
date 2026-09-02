@@ -2223,6 +2223,79 @@ incomplete pending a fresh real local Ollama smoke.
 - No live model endpoint, public Python/Ollama runtime, dependency, backend, authoritative
   telemetry, or deployment change was introduced. Vercel remains a static, read-only replay.
 
+## MVP 1 — Quantitative + ML research core
+
+**State:** Complete on 2026-09-02.
+
+### Implemented so far
+
+- Added `research.py` typed research contracts and deterministic helpers for performance metrics,
+  chronological splits, expanding walk-forward windows, leakage-safe shifted rolling features,
+  seeded Gaussian-mixture regime fitting, benchmarks, regime summaries, and bounded stress grids.
+- Extended the deterministic backtest with separately reported commission, spread, and fixed
+  slippage costs. All are basis points of total absolute turnover and reduce gross return on the
+  effective trade date; the legacy aggregate `transaction_cost_bps` interface remains compatible.
+- Added `scikit-learn` and focused deterministic research tests; README now describes the timing,
+  metric, benchmark, and leakage conventions.
+
+### Validation to date
+
+- `/tmp/strategy_redteam_mvp_venv/bin/pytest -q -p no:cacheprovider tests/test_research.py
+  tests/test_backtest.py`: PASS; 19 passed in 13.67s.
+- `/tmp/strategy_redteam_mvp_venv/bin/ruff check src/strategy_redteam/research.py
+  src/strategy_redteam/backtest.py tests/test_research.py`: PASS; `All checks passed!`.
+
+### Assumption
+
+- The explicit MVP 1 request supersedes the frozen specification's frictionless-only baseline
+  wording while retaining zero costs as the compatibility default. Existing timing, immutable
+  provenance, bounded execution, and deterministic-engine authority remain unchanged.
+
+### Final integration and validation
+
+- `redteam research run --experiment config/example_60_40.yaml --dataset
+  tests/fixtures/offline-cache/manifests/correlation-break.json --output <new-directory>` writes
+  one immutable `research-result.json`. It contains net/gross results, itemised costs, benchmark,
+  chronological splits, actual expanding-window strategy replays, seeded GMM metadata and numeric
+  assignments, regime summaries, and a real 2×2 volatility/correlation stress surface.
+- Repeating the canonical command into two separate directories produced byte-identical JSON
+  artifacts (same data SHA-256 `6fa7e4f25f08fa8de56b09b1ba54a29a0f183baa793568ad9b55e870fb772c4d`
+  and seed `20260823`).
+- Targeted integration acceptance: `tests/test_research.py`: PASS; 5 passed in 20.07s.
+- Existing core test group: PASS; 102 passed in 23.48s. Historical/demo group: PASS; 7 passed in
+  7.09s. Full collection requires `PYTHONPATH=.` in this Linux shell because repository tests use
+  root-level namespace imports (`scripts` and `tests`); without it collection fails before tests.
+- `mypy src`: PASS; no issues in 21 source files. `ruff check .`: PASS; `All checks passed!`.
+
+### Limitations
+
+- The small canonical fixture produces four fitted GMM components but only one observed later
+  label; this is recorded rather than manufactured into a narrative regime distinction.
+- The surface uses supported volatility multiplier plus a validated correlation *shift* translated
+  to a correlation-target component. An out-of-domain shift is rejected; it is never clipped.
+- Costs are linear basis-point assumptions only. No tax, borrow, market impact, or live execution
+  is modelled.
+
+### Final acceptance classification
+
+- Pytest now registers a narrow `hosted` marker for the 18 parametrized Azure/Foundry hosted
+  application-contract tests in `tests/test_hosted_contracts.py`. They use fakes and local package
+  construction, but require the optional hosted dependency layer and are a separate deployment
+  acceptance layer rather than MVP 1's local research requirement.
+- The remaining deterministic/offline partition includes 174 tests: 129 deterministic core tests
+  plus 45 offline provider-contract tests (deterministic provider selection, fake Ollama adapter,
+  demo rejection, service, offline orchestration, stress, and research tests). The Ollama tests use
+  injected fake clients and do not contact a running Ollama server.
+- `pythonpath = ["."]` is now declared in pytest configuration. This formalizes the existing
+  root-level namespace imports used by `scripts.build_hosted_packages` and test helpers, avoiding
+  a shell-specific `PYTHONPATH=.` prerequisite.
+- Offline acceptance, run as mutually exclusive bounded groups equivalent to `pytest -m 'not
+  hosted'`, passed **174 passed, 0 skipped, 0 failed**: 102 core (23.48s), 7 demo/historical
+  (7.09s), 19 model-provider/Ollama-client/demo (15.59s), 40 services/stress/research (22.35s),
+  and 6 offline orchestration (19.02s). Ruff passed and mypy passed for 21 source files.
+- Optional hosted contract command: `pytest -m hosted`. There are no live-provider or live-Ollama
+  tests in the suite; the optional local-model manual demonstration remains `redteam demo run`.
+
 ### Validation
 
 - `frontend`: `pnpm test`: PASS; **6 passed**. `pnpm lint`: PASS. `pnpm build`: PASS; static `/`

@@ -108,6 +108,40 @@ Choose a new output directory; completed artifact bundles are immutable.
 See [architecture](docs/ARCHITECTURE.md), [deployment](docs/DEPLOYMENT.md), and the frozen
 [specification](docs/SPEC.md) for the detailed contracts.
 
+## Quantitative research core (MVP 1)
+
+The research helpers use chronological train/validation/test partitions and expanding
+walk-forward windows only—financial observations are never randomly shuffled. Rolling regime
+features are shifted one row, so each feature uses prior closes only. A seeded scikit-learn
+`StandardScaler` and Gaussian mixture model are fitted on the training partition and then used
+only for later inference. Numeric labels remain numeric; any narrative interpretation is separate.
+
+Transaction costs are deducted from gross return on the effective trade date. Turnover is total
+absolute traded notional; commission, bid/ask spread, and fixed slippage are each expressed in
+basis points of that turnover, and their sum is the net-return deduction. The metrics helper
+reports total return, CAGR, annualized volatility, Sharpe, Sortino, drawdown, Calmar, win rate,
+profit factor, turnover, exposure, and trade summaries. Ratios that are mathematically undefined
+(for example zero volatility or no losses) are emitted as `null`, never fabricated.
+
+Available benchmarks are cash (zero return) and equal-weight buy-and-hold of the evaluated assets.
+This is a research/evaluation platform, not investment advice: historical and synthetic stress
+results do not predict future returns, and no market-impact, tax, borrow, or live-execution model
+is included.
+
+Run the canonical deterministic MVP 1 experiment (no network or model service is used):
+
+```sh
+redteam research run --experiment config/example_60_40.yaml --dataset tests/fixtures/offline-cache/manifests/correlation-break.json --output artifacts/mvp1-canonical
+```
+
+This produces `research-result.json`, containing immutable dataset provenance, gross and net
+performance, cost components, benchmark comparison, temporal partitions, actual expanding-window
+out-of-sample backtests, GMM metadata and numeric labels, regime summaries, and a 2×2 engine-backed
+surface. Each grid point composes the existing volatility-multiplier and correlation-target stress
+transforms and replays the real deterministic backtest; its stored correlation value is the shift
+from the source-window correlation. The command defaults to 2 bp commission, 5 bp spread, and 3 bp
+slippage per unit of turnover. Use a new output directory for each immutable result.
+
 ## Current status
 
 - Gate 12E complete
