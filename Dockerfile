@@ -12,6 +12,7 @@ COPY alembic.ini ./
 COPY alembic ./alembic
 COPY config ./config
 COPY tests/fixtures/offline-cache ./tests/fixtures/offline-cache
+COPY data ./data
 COPY src ./src
 USER appuser
 EXPOSE 8000

@@ -1,5 +1,5 @@
-import { ReplayDashboard } from "@/components/replay-dashboard";
+import { ProductApp } from "@/components/product-app";
 
-export default function ReplayPage() {
-  return <ReplayDashboard />;
+export default function DashboardPage() {
+  return <ProductApp page="dashboard" />;
 }

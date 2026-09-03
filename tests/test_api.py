@@ -118,3 +118,36 @@ def test_controlled_research_failure_is_persisted_and_not_exposed(
     assert "internal stack detail" not in response.text
     assert "research_failed" in caplog.text
     assert "internal stack detail" in caplog.text
+
+
+def test_product_catalog_findings_filters_and_comparison(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    catalog = client.get("/api/v1/catalog")
+    assert catalog.status_code == 200
+    assert {item["manifest_name"] for item in catalog.json()["datasets"]} == {
+        "correlation-break.json",
+        "spy-tlt-2007-2025.json",
+    }
+    assert catalog.json()["provider_modes"] == ["deterministic"]
+
+    first = client.post("/api/v1/experiments", json=_request("compare-one")).json()
+    second_request = _request("compare-two")
+    second_request["name"] = "comparison control"
+    second = client.post("/api/v1/experiments", json=second_request).json()
+    findings = client.get(f"/api/v1/experiments/{first['id']}/ai-findings")
+    assert findings.status_code == 200
+    assert len(findings.json()["findings"]) == 3
+    assert {item["verification_status"] for item in findings.json()["findings"]} == {
+        "reproduced",
+        "rejected",
+    }
+
+    comparison = client.post(
+        "/api/v1/experiments/compare",
+        json={"experiment_ids": [first["id"], second["id"]]},
+    )
+    assert comparison.status_code == 200
+    assert len(comparison.json()["items"]) == 2
+    assert all(item["total_hypotheses"] == 3 for item in comparison.json()["items"])
+    filtered = client.get("/api/v1/experiments?status=COMPLETED&search=control")
+    assert filtered.json()["total"] == 1

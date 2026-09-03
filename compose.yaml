@@ -16,6 +16,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://strategy_redteam:strategy_redteam@postgres:5432/strategy_redteam
       DATASET_ROOT: tests/fixtures/offline-cache/manifests
+      CANONICAL_DATASET_ROOT: data/canonical/manifests
+      CONFIGURATION_ROOT: config
     depends_on:
       postgres:
         condition: service_healthy

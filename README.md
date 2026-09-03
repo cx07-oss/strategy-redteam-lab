@@ -1,13 +1,16 @@
 # Trading Strategy Red-Team Lab
 
-Trading Strategy Red-Team Lab is a bounded adversarial evaluation platform: an LLM attacker
-selects policy-valid market stresses, a deterministic Python engine evaluates a systematic
-strategy, and an independent defender replays failures. It is research and evaluation software
-only—never brokerage execution or investment advice.
+Trading Strategy Red-Team Lab is a portfolio research product for testing where a systematic
+strategy fails. AI proposes bounded failure hypotheses; a deterministic, transaction-cost-aware
+Python engine owns every return, regime, stress result, and verdict. FastAPI/PostgreSQL preserve
+experiments, while Next.js presents the evidence without a second calculation path.
 
-**Live Demo — Verified Run Replay:** <https://strategy-redteam-lab.vercel.app/>. This public,
-read-only application replays a verified telemetry artifact produced by the evaluation pipeline;
-it is not a live trading system and runs neither Python nor Ollama publicly.
+It is research and adversarial-testing software only—not investment advice, brokerage execution,
+or a strategy recommendation system.
+
+**Existing live MVP 2 replay:** <https://strategy-redteam-lab.vercel.app/>. MVP 3 is locally
+deployment-ready but has not replaced that production deployment in this gate. Public mode uses
+only checked-in evidence and runs neither Python, paid models, nor credentials in the browser.
 
 ## Why this exists
 
@@ -16,21 +19,20 @@ calculations. The trust boundary is deliberate:
 
 | LLM owns | Python owns |
 | --- | --- |
-| Attack selection and prioritisation | Scenario construction, numeric stress parameters, dates, IDs, policy validation, backtesting, risk metrics, and replay verification |
+| Bounded hypothesis text and proposed supported parameters | Schema/policy validation, scenario execution, backtesting, risk metrics, and verification verdicts |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  A[Immutable data and config] --> B[Deterministic candidate generation]
-  B --> C[Policy validation]
-  C --> D[Prevalidated AttackCatalog]
-  D --> E[Ollama selects an attack key]
-  E --> F[Deterministic stress and backtest]
-  F --> G[Risk-limit breaches]
-  G --> H[Independent defender replay]
-  H --> I[Verified telemetry]
-  I --> J[Next.js replay dashboard]
+  UI[Next.js product] --> API[FastAPI /api/v1]
+  API --> S[Experiment service]
+  S --> E[Deterministic backtest / ML / stress engine]
+  S --> DB[(PostgreSQL)]
+  AI[Hypothesis provider] --> H[Strict typed hypothesis]
+  H --> V[Deterministic verifier]
+  V --> E
+  E --> UI
 ```
 
 ## Verified result
@@ -40,12 +42,38 @@ Scenario `ollama-r01-c01` was a valid evaluation with three breaches, maximum no
 of `1.1986`, and 81 chart points. The defender reproduced the result with replay delta `0.0`.
 This is evidence of a configured stress-test failure, not a claim of trading alpha or profitability.
 
-## Frontend replay
+## Canonical historical portfolio case
 
-The read-only Next.js dashboard renders baseline versus stressed equity, drawdown, the canonical
-selected attack, breach events, defender replay, and provenance hashes. It builds from a
-checked-in verified telemetry fixture; it does not require the Python backend, Ollama, model
-credentials, or a user-specific path at runtime.
+The MVP 3 flagship case uses yfinance adjusted daily SPY/TLT observations from 2007-01-03 through
+2025-12-31 (4,780 aligned rows), cached as immutable Parquet. The monthly 60/40 strategy uses the
+same one-row execution lag and MVP 1 engine as CI; the benchmark is the engine's existing
+equal-weight reference.
+
+| Engine result | Actual value |
+| --- | ---: |
+| Gross / net total return | 357.89% / 354.81% |
+| CAGR | 8.31% |
+| Sharpe / Sortino | 0.768 / 0.997 |
+| Annualized volatility | 11.22% |
+| Maximum drawdown | 31.09% |
+| Benchmark / excess return | 321.20% / 33.61% |
+| Turnover / modeled cost | 6.767x / 0.677% |
+| Walk-forward OOS return | 250.59% |
+
+All four configured GMM components had meaningful post-training occupancy (559, 530, 101, and
+722 observations), so the component count was not changed. The bounded 2x2 MVP 1 stress surface
+did not produce terminal-return degradation on this historical path; that negative result remains
+visible. Separate deterministic verification reproduced the three predefined AI-layer hypotheses:
+positive stock/bond correlation, a volatility jump, and higher transaction costs.
+
+Dataset SHA-256: `2c3d3b7bd8aede53ffd768e64db71532a48543c0e897e2aba1b4e8f67734426b`.
+
+## Frontend product
+
+The Next.js product provides Dashboard, Experiments, allowlisted New Experiment, flagship
+Experiment Detail, Compare, and the preserved `/replay` workspace. Public mode renders checked-in
+canonical evidence without Python, model credentials, or paid calls; an owner-controlled connected
+mode uses only the typed `/api/v1` FastAPI endpoints.
 
 ## Technology
 
@@ -62,6 +90,7 @@ tests/                 fixed, network-free acceptance fixtures and tests
 config/                serialised experiment configuration
 artifacts/demo/        verified demo telemetry source
 frontend/              static, read-only verified-run dashboard
+data/canonical/         immutable historical dataset and canonical MVP 3 product evidence
 docs/                  specification, architecture, deployment, and status records
 ```
 
@@ -85,6 +114,9 @@ pnpm lint
 pnpm build
 pnpm dev
 ```
+
+The public default needs no environment. For an owner-controlled API deployment, set
+`NEXT_PUBLIC_PRODUCT_MODE=connected` and `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`.
 
 The verified local Ollama demo is an explicit manual action and requires a running local Ollama
 server plus an experiment config whose provider is `ollama`:
@@ -144,11 +176,15 @@ slippage per unit of turnover. Use a new output directory for each immutable res
 
 ## Current status
 
-- Gate 12E complete
-- Gate 13A complete
+- MVP 1 tagged `mvp1-quant-ml`
+- MVP 2 tagged `mvp2-production-platform`
+- MVP 3 implemented and locally acceptance-tested; deployment-ready, not automatically deployed
 - Gate 13B complete
 - Gate 14A complete
 - Gate 14B public deployment verification complete
+- MVP 1 tagged `mvp1-quant-ml`
+- MVP 2 tagged `mvp2-production-platform`
+- MVP 3 local product and acceptance evidence are recorded in `docs/STATUS.md`
 
 ## MVP 2 backend API
 

@@ -1,5 +1,26 @@
 # Architecture and trust boundaries
 
+## MVP 3 product architecture
+
+```mermaid
+flowchart TD
+  UI[Next.js dashboard / experiments / detail / compare] --> API[FastAPI /api/v1]
+  API --> S[Experiment Service]
+  S --> CORE[Deterministic Research Engine<br/>Backtest / Walk-forward / GMM / Stress]
+  S --> DB[(PostgreSQL)]
+  P[AI Hypothesis Provider<br/>DETERMINISTIC / LOCAL / LIVE] --> T[Strict HypothesisBatch]
+  T --> V[Deterministic Verifier]
+  V --> CORE
+  CORE --> R[Engine metrics and verification status]
+  R --> DB
+  R --> UI
+```
+
+The AI provider is outside the authoritative metric path. It can supply only schema-valid,
+allowlisted stress parameters; it cannot set returns, risk metrics, or verification status.
+Public mode loads a precomputed canonical artifact and exposes no provider key. Connected mode
+uses FastAPI for every persisted experiment and comparison.
+
 ## System
 
 The lab evaluates stress scenarios against a fixed systematic strategy. Immutable market data and

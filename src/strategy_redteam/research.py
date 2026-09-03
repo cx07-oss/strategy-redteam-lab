@@ -158,6 +158,13 @@ class RegimeAssignment(ContractModel):
     regime: int = Field(ge=0)
 
 
+class EquityCurvePoint(ContractModel):
+    date: str
+    strategy_equity: float = Field(gt=0.0)
+    benchmark_equity: float = Field(gt=0.0)
+    drawdown: float = Field(ge=0.0, le=1.0)
+
+
 class ExperimentResult(ContractModel):
     experiment_id: str
     data_manifest: DataManifest
@@ -172,6 +179,7 @@ class ExperimentResult(ContractModel):
     regime_assignments: tuple[RegimeAssignment, ...]
     regime_summaries: tuple[RegimeSummary, ...]
     stress_surface: tuple[StressSurfacePoint, ...]
+    equity_curve: tuple[EquityCurvePoint, ...]
     seed: int
 
 
@@ -447,6 +455,9 @@ def run_research_experiment(
     earned = baseline.portfolio_returns.iloc[1:]
     gross = baseline.gross_portfolio_returns.iloc[1:]
     benchmark = benchmark_returns(baseline.asset_returns.iloc[1:], experiment.benchmark)
+    strategy_equity = (1.0 + earned).cumprod()
+    benchmark_equity = (1.0 + benchmark).cumprod()
+    drawdown = 1.0 - strategy_equity / strategy_equity.cummax()
     train_dates, validation_dates, test_dates = chronological_split(
         earned.index, experiment.temporal_split
     )
@@ -567,5 +578,14 @@ def run_research_experiment(
         ),
         regime_summaries=regime_conditioned_metrics(earned, benchmark, labels),
         stress_surface=stress_surface(volatility_multipliers, correlation_shifts, evaluate_surface),
+        equity_curve=tuple(
+            EquityCurvePoint(
+                date=str(timestamp.date()),
+                strategy_equity=float(strategy_equity.loc[timestamp]),
+                benchmark_equity=float(benchmark_equity.loc[timestamp]),
+                drawdown=float(drawdown.loc[timestamp]),
+            )
+            for timestamp in strategy_equity.index
+        ),
         seed=spec.seed,
     )

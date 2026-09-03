@@ -3,11 +3,13 @@
   "type": "module",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "pnpm@11.24.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "type-check": "tsc --noEmit --pretty false",
     "test": "node --test --experimental-strip-types tests/*.test.ts",
     "sync:fixture": "node scripts/sync-demo-telemetry.mjs"
   },

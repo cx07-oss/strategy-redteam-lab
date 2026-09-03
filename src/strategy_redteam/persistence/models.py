@@ -68,6 +68,9 @@ class ExperimentResultRecord(Base):
     turnover: Mapped[float | None] = mapped_column(nullable=True)
     total_cost: Mapped[float] = mapped_column(nullable=False)
     structured_result: Mapped[dict[str, Any]] = mapped_column(JSONValue, nullable=False)
+    ai_findings: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONValue, nullable=False, default=list
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -1,5 +1,23 @@
 # Frontend deployment
 
+## MVP 3 deployment-ready topology
+
+- **Frontend:** Vercel, rooted at `frontend/`. Public mode is the safe default and has no secrets.
+- **Backend:** the existing production Docker image on a small Azure Container App or equivalent.
+- **Database:** PostgreSQL 16; use managed PostgreSQL only when its ongoing cost is justified.
+- **AI:** deterministic provider for public execution; Ollama is local/owner-controlled; a hosted
+  provider must remain disabled unless the owner explicitly configures it. No browser receives a
+  provider credential.
+
+Backend variables are `DATABASE_URL`, `DATASET_ROOT`, `CANONICAL_DATASET_ROOT`, `CORS_ORIGINS`,
+`APP_ENV`, and `LOG_LEVEL`. Frontend connected mode additionally uses
+`NEXT_PUBLIC_PRODUCT_MODE=connected` and `NEXT_PUBLIC_API_BASE_URL=<backend origin>`. The default
+public build needs neither variable and serves checked-in canonical evidence.
+
+No MVP 3 cloud resource was provisioned or changed automatically. Verify locally with
+`docker compose build`, `docker compose up -d`, `alembic upgrade head`, and the frontend commands
+below before following the provider's normal deployment workflow.
+
 ## Recommendation
 
 The verified replay is deployed to **Vercel** at

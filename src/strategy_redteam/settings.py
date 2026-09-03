@@ -19,4 +19,6 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     dataset_root: Path = Field(default=Path("tests/fixtures/offline-cache/manifests"))
+    canonical_dataset_root: Path = Field(default=Path("data/canonical/manifests"))
+    configuration_root: Path = Field(default=Path("config"))
     cors_origins: str = "http://localhost:3000"

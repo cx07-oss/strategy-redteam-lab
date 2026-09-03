@@ -2464,3 +2464,51 @@ Performed on 2026-09-03 from the repository root using Python 3.12.14 locally (C
 - `.venv\Scripts\python.exe -m ruff check .`: PASS; `All checks passed!`.
 - `.venv\Scripts\python.exe -m mypy src`: PASS; `Success: no issues found in 20 source files`.
 - `git diff --check`: PASS.
+
+## MVP 3 — Portfolio-ready product and AI adversarial research
+
+**State:** Complete locally on 2026-09-03; deployment-ready, not deployed.
+
+- Preserved the synthetic CI fixture and MVP 1 calculation path. Added an immutable yfinance
+  SPY/TLT adjusted-OHLCV cache for 2007-01-03–2025-12-31: 4,780 common observed dates, reject
+  missing-data policy, SHA-256
+  `2c3d3b7bd8aede53ffd768e64db71532a48543c0e897e2aba1b4e8f67734426b`.
+  The initial request through 2026-08-31 correctly failed because the provider returned incomplete
+  OHLCV; the period was changed to the latest complete safely cached year, without fabrication.
+- The unchanged engine's monthly 60/40 case reports gross/net return 357.89%/354.81%, benchmark
+  321.20%, CAGR 8.31%, Sharpe 0.768, Sortino 0.997, volatility 11.22%, maximum drawdown 31.09%,
+  turnover 6.767x, costs 0.677%, and walk-forward OOS return 250.59%. Four GMM components retained
+  meaningful later occupancy (559/530/101/722), so no cluster setting was changed.
+- Added strict AI hypotheses, deterministic/local/live provider modes with deterministic fallback,
+  engine-owned verdicts, persistence/migration/API discovery and comparison, and three canonical
+  reproduced weaknesses: correlation drawdown +14.30pp, volatility +8.10pp, and cost drag 9.13pp.
+  Added Dashboard, Experiments, New Experiment, Detail, Compare, and preserved `/replay` pages.
+
+### Exact acceptance evidence
+
+- `DATABASE_URL=postgresql+psycopg://strategy_redteam:strategy_redteam@localhost:5432/strategy_redteam UV_CACHE_DIR=/tmp/strategy_redteam_uv_cache uv run pytest -m "not hosted"`:
+  PASS; **184 passed, 25 deselected, 1 warning**, 76% coverage in 44.14s. This included the real
+  PostgreSQL/Alembic migration test and five fixed AI/product evaluations; no network/model call.
+- `UV_CACHE_DIR=/tmp/strategy_redteam_uv_cache uv run ruff check .`: PASS.
+- `UV_CACHE_DIR=/tmp/strategy_redteam_uv_cache uv run mypy src`: PASS; 31 source files.
+- From `frontend/`, `CI=true pnpm install --frozen-lockfile --store-dir
+  /home/chun/projects/strategy-redteam/.pnpm-store`: PASS; lockfile unchanged.
+- From `frontend/`, `node --test --experimental-strip-types tests/*.test.ts`: PASS; 2/2 files.
+- From `frontend/`, `node node_modules/eslint/bin/eslint.js .`: PASS; no findings.
+- From `frontend/`, `node node_modules/typescript/bin/tsc --noEmit --pretty false`: PASS.
+- From `frontend/`, `node node_modules/next/dist/bin/next build`: PASS; 7 routes built with
+  Next.js 16.3.3.
+- `docker compose build`: PASS. `docker compose up -d`: PASS. `docker compose ps`: backend and
+  PostgreSQL healthy. `/health`, `/ready`, and `/api/v1/catalog`: PASS; catalog exposes both cached
+  datasets and both allowlisted configurations.
+- `git diff --check`: PASS.
+
+### Assumptions and limitations
+
+- Equal-weight buy-and-hold remains the existing engine benchmark. Event annotations are
+  explanatory only and never enter GMM fitting. The 2×2 bounded stress surface increased rather
+  than degraded terminal return; this negative result remains visible.
+- Public mode is precomputed/deterministic. Local Ollama and owner-only hosted modes are optional;
+  paid/live calls are excluded from CI. The existing MVP 2 URL was not overwritten and no paid
+  resource was provisioned. Remote GitHub Actions was not run; its workflow now includes frontend
+  acceptance. Results remain historical research, not investment advice.

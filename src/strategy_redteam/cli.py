@@ -27,9 +27,12 @@ from strategy_redteam.offline import (
     offline_artifact_names,
     run_offline_experiment,
 )
+from strategy_redteam.product import build_canonical_product_artifact
 from strategy_redteam.research import (
     ExecutionCostAssumptions,
     Experiment,
+    ExperimentResult,
+    RegimeConfig,
     WalkForwardConfig,
     run_research_experiment,
 )
@@ -39,9 +42,11 @@ app = typer.Typer(help="Research-only trading-strategy red-team tools.")
 data_app = typer.Typer(help="Download, cache, and validate immutable historical datasets.")
 demo_app = typer.Typer(help="Run and export genuine verified local-Ollama demo telemetry.")
 research_app = typer.Typer(help="Run deterministic quantitative and ML research experiments.")
+product_app = typer.Typer(help="Build precomputed, deterministic public product evidence.")
 app.add_typer(data_app, name="data")
 app.add_typer(demo_app, name="demo")
 app.add_typer(research_app, name="research")
+app.add_typer(product_app, name="product")
 
 
 class RunMode(StrEnum):
@@ -255,6 +260,10 @@ def run_research(
     commission_bps: Annotated[float, typer.Option(min=0.0)] = 2.0,
     spread_bps: Annotated[float, typer.Option(min=0.0)] = 5.0,
     slippage_bps: Annotated[float, typer.Option(min=0.0)] = 3.0,
+    initial_train_rows: Annotated[int, typer.Option(min=2)] = 40,
+    test_rows: Annotated[int, typer.Option(min=1)] = 20,
+    step_rows: Annotated[int, typer.Option(min=1)] = 20,
+    regime_count: Annotated[int, typer.Option(min=2, max=8)] = 4,
 ) -> None:
     """Export one deterministic, provenance-bound MVP-1 research JSON artifact."""
     result_path = output / "research-result.json"
@@ -268,7 +277,12 @@ def run_research(
                 spread_bps=spread_bps,
                 slippage_bps=slippage_bps,
             ),
-            walk_forward=WalkForwardConfig(initial_train_rows=40, test_rows=20, step_rows=20),
+            walk_forward=WalkForwardConfig(
+                initial_train_rows=initial_train_rows,
+                test_rows=test_rows,
+                step_rows=step_rows,
+            ),
+            regime=RegimeConfig(n_regimes=regime_count),
         )
         result = run_research_experiment(stored, research_experiment)
         output.mkdir(parents=True, exist_ok=False)
@@ -280,6 +294,47 @@ def run_research(
     typer.echo(f"research_result={result_path}")
     typer.echo(f"data_sha256={stored.manifest.sha256}")
     typer.echo(f"seed={result.seed}")
+
+
+@product_app.command("build-canonical")
+def build_canonical_product(
+    experiment: Annotated[
+        Path,
+        typer.Option("--experiment", exists=True, dir_okay=False, readable=True, resolve_path=True),
+    ],
+    dataset: Annotated[
+        Path,
+        typer.Option("--dataset", exists=True, dir_okay=False, readable=True, resolve_path=True),
+    ],
+    research_result: Annotated[
+        Path,
+        typer.Option(
+            "--research-result", exists=True, dir_okay=False, readable=True, resolve_path=True
+        ),
+    ],
+    output: Annotated[Path, typer.Option("--output", file_okay=False, resolve_path=True)],
+    transaction_cost_bps: Annotated[float, typer.Option(min=0.0)] = 10.0,
+) -> None:
+    """Combine existing engine output with engine-verified deterministic AI findings."""
+    destination = output / "canonical-product.json"
+    try:
+        config = load_offline_config(experiment)
+        stored = LocalDatasetStore(dataset.parent.parent).validate(dataset)
+        research = ExperimentResult.model_validate_json(research_result.read_bytes())
+        artifact = build_canonical_product_artifact(
+            stored,
+            config.bind_dataset(stored),
+            research,
+            transaction_cost_bps=transaction_cost_bps,
+        )
+        output.mkdir(parents=True, exist_ok=False)
+        destination.write_bytes(artifact.model_dump_json(indent=2).encode("utf-8"))
+    except (OSError, ValidationError, HistoricalDataError, ValueError) as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo("status=verified")
+    typer.echo(f"canonical_product={destination}")
+    typer.echo(f"ai_findings={len(artifact.ai_findings)}")
 
 
 @demo_app.command("run")

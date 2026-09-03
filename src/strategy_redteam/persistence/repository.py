@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from strategy_redteam.persistence.models import (
@@ -12,6 +12,7 @@ from strategy_redteam.persistence.models import (
     ExperimentResultRecord,
     ExperimentStatus,
 )
+from strategy_redteam.product import VerifiedHypothesis
 from strategy_redteam.research import ExperimentResult
 
 
@@ -27,17 +28,31 @@ class ExperimentRepository:
             select(ExperimentRecord).where(ExperimentRecord.idempotency_key == key)
         )
 
-    def list(self, offset: int, limit: int) -> tuple[list[ExperimentRecord], int]:
+    def list(
+        self,
+        offset: int,
+        limit: int,
+        *,
+        status: ExperimentStatus | None = None,
+        search: str | None = None,
+    ) -> tuple[list[ExperimentRecord], int]:
+        conditions = []
+        if status is not None:
+            conditions.append(ExperimentRecord.status == status)
+        if search:
+            conditions.append(ExperimentRecord.name.ilike(f"%{search}%"))
+        query = select(ExperimentRecord).where(*conditions)
         records = list(
             self.session.scalars(
-                select(ExperimentRecord)
-                .order_by(ExperimentRecord.created_at.desc())
+                query.order_by(ExperimentRecord.created_at.desc())
                 .offset(offset)
                 .limit(limit)
             )
         )
-        total = len(list(self.session.scalars(select(ExperimentRecord.id))))
-        return records, total
+        total = self.session.scalar(
+            select(func.count()).select_from(ExperimentRecord).where(*conditions)
+        )
+        return records, int(total or 0)
 
     def create(self, record: ExperimentRecord) -> ExperimentRecord:
         self.session.add(record)
@@ -50,7 +65,12 @@ class ExperimentRepository:
         record.started_at = datetime.now(UTC)
         self.session.commit()
 
-    def complete(self, record: ExperimentRecord, result: ExperimentResult) -> None:
+    def complete(
+        self,
+        record: ExperimentRecord,
+        result: ExperimentResult,
+        findings: tuple[VerifiedHypothesis, ...] = (),
+    ) -> None:
         payload = result.model_dump(mode="json")
         record.status = ExperimentStatus.COMPLETED
         record.completed_at = datetime.now(UTC)
@@ -65,6 +85,7 @@ class ExperimentRepository:
                 turnover=result.costs.turnover,
                 total_cost=result.costs.total_trading_cost,
                 structured_result=payload,
+                ai_findings=[finding.model_dump(mode="json") for finding in findings],
             )
         )
         self.session.commit()

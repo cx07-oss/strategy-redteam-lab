@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import "./styles.css";
+import "./product.css";
 
 export const metadata: Metadata = {
-  title: "Trading Strategy Red-Team Lab",
+  title: "Strategy Red Team — Deterministic Research",
   description:
-    "Read-only replay of verified, deterministic trading-strategy stress-test telemetry.",
+    "AI-assisted adversarial portfolio research verified by a deterministic Python engine.",
 };
 
 export const viewport = { width: "device-width", initialScale: 1 };
