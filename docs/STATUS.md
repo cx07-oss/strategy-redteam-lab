@@ -2223,6 +2223,60 @@ incomplete pending a fresh real local Ollama smoke.
 - No live model endpoint, public Python/Ollama runtime, dependency, backend, authoritative
   telemetry, or deployment change was introduced. Vercel remains a static, read-only replay.
 
+## MVP 2 — Production Research Platform
+
+**State:** PASS on 2026-09-03.
+
+### Added
+
+- Thin FastAPI factory with health/readiness endpoints and versioned experiment routes.
+- SQLAlchemy experiment/result records, lifecycle states, idempotency key, Alembic initial migration,
+  typed settings, safe manifest resolution, structured lifecycle/request logging, Dockerfile, Compose,
+  CI workflow, and backend README guidance.
+- The MVP 1 research engine and CLI remain unchanged; the service invokes the existing typed engine.
+
+### Acceptance validation
+
+Performed on 2026-09-03 from the repository root using Python 3.12.14 locally (CI targets 3.11):
+
+- `UV_CACHE_DIR=/tmp/strategy_redteam_uv_cache uv sync --extra dev --extra hosted`: PASS. The
+  optional hosted packages are installed only so pytest can collect and deselect the hosted contract
+  modules; no paid provider or hosted service is invoked.
+- `DATABASE_URL=postgresql+psycopg://strategy_redteam:strategy_redteam@localhost:5432/strategy_redteam
+  UV_CACHE_DIR=/tmp/strategy_redteam_uv_cache uv run pytest -q -m 'not hosted' --no-cov`: PASS;
+  **178 passed, 25 hosted tests deselected, 0 failed** in 22.32s. The suite includes focused HTTP,
+  SQLite repository, and real PostgreSQL integration tests.
+- Real PostgreSQL integration: PASS. The test executes `alembic downgrade base` then `alembic
+  upgrade head` against the Docker PostgreSQL service, verifies `experiments`, `experiment_results`,
+  and `alembic_version`, validates the enum and JSONB records, runs the canonical API experiment,
+  verifies idempotency and cascade deletion, and compares the API result exactly with direct MVP 1
+  engine JSON (excluding no fields).
+- `docker compose build`: PASS. `docker compose up -d`: PASS. `docker compose ps`: PASS; both
+  `postgres` and `backend` report healthy. `curl --fail http://localhost:8000/health` returned
+  `{"status":"ok","environment":"development"}` and `/ready` returned `{"status":"ready"}`.
+- `UV_CACHE_DIR=/tmp/strategy_redteam_uv_cache uv run ruff check .`: PASS; `All checks passed!`.
+- `UV_CACHE_DIR=/tmp/strategy_redteam_uv_cache uv run mypy src`: PASS; no issues in 30 source files.
+- `git diff --check`: PASS.
+- Focused backend coverage from the final suite: `api/app.py` 91%, `experiment_service.py` 94%,
+  `persistence/database.py` 71%; `persistence/models.py`, `persistence/repository.py`, and
+  `settings.py` are fully covered and omitted by coverage's `skip_covered` report.
+
+### Acceptance decisions and limitations
+
+- The API remains synchronous. A local canonical POST measured 0.47s and a direct engine run 0.52s;
+  the difference is normal local scheduling/cache noise, so database overhead is below meaningful
+  measurement resolution for this fixture. No Redis, Celery, worker, or background execution was
+  justified or added.
+- Controlled engine failures persist `FAILED` with `execution_error` and the safe public message
+  `Research execution failed`; the exception detail is logged server-side and is not returned by the
+  API. Request/lifecycle logs are tested for request ID, route, status, duration, experiment ID,
+  research duration, walk-forward folds, and regime count, without result payloads or credentials.
+- The initial migration is the authoritative production schema path; test-only SQLite `create_all`
+  is used solely for isolated repository/API unit coverage, never by the service or Docker startup.
+- GitHub Actions now uses `uv sync --extra dev --extra hosted`, then runs Alembic, deterministic
+  non-hosted tests, the PostgreSQL-marked integration test, Ruff, and mypy. Hosted tests remain
+  deselected and do not call a paid service.
+
 ## MVP 1 — Quantitative + ML research core
 
 **State:** Complete on 2026-09-02.

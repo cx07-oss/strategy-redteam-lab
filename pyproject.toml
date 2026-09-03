@@ -17,6 +17,12 @@ dependencies = [
     "typer>=0.12",
     "yfinance>=0.2.40",
     "ollama>=0.4",
+    "fastapi>=0.115,<1.0",
+    "sqlalchemy>=2.0,<3.0",
+    "alembic>=1.13,<2.0",
+    "psycopg[binary]>=3.2,<4.0",
+    "pydantic-settings>=2.6,<3.0",
+    "uvicorn>=0.52.4",
 ]
 
 [project.scripts]
@@ -51,6 +57,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "hosted: optional Azure/Foundry hosted-application contract layer; no live provider call",
+    "postgres: requires the local or CI PostgreSQL service",
 ]
 
 [tool.coverage.run]
@@ -68,6 +75,11 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "RUF", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/strategy_redteam/api/app.py" = ["B008"]
+"alembic/env.py" = ["E501"]
+"alembic/versions/*.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

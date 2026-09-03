@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: strategy_redteam
+      POSTGRES_USER: strategy_redteam
+      POSTGRES_PASSWORD: strategy_redteam
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U strategy_redteam -d strategy_redteam"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports: ["5432:5432"]
+  backend:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://strategy_redteam:strategy_redteam@postgres:5432/strategy_redteam
+      DATASET_ROOT: tests/fixtures/offline-cache/manifests
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5

@@ -149,3 +149,37 @@ slippage per unit of turnover. Use a new output directory for each immutable res
 - Gate 13B complete
 - Gate 14A complete
 - Gate 14B public deployment verification complete
+
+## MVP 2 backend API
+
+The optional production-style backend keeps the deterministic MVP 1 engine independent of HTTP
+and PostgreSQL. FastAPI routes call an application service, which validates an existing immutable
+manifest, runs the engine, and persists a compact lifecycle record plus the canonical typed result.
+
+```mermaid
+flowchart LR
+  API[FastAPI /api/v1] --> Service[Experiment service]
+  Service --> Engine[Deterministic MVP 1 engine]
+  Service --> DB[(PostgreSQL)]
+```
+
+Start PostgreSQL and the backend locally with `docker compose up --build`. Swagger UI is at
+`http://localhost:8000/docs`; OpenAPI JSON is at `/openapi.json`. For a non-container workflow,
+set `DATABASE_URL` and run `alembic upgrade head`, then
+`uvicorn strategy_redteam.api.app:app --reload`.
+
+The API accepts a typed MVP 1 configuration and a manifest filename under `DATASET_ROOT` (default:
+the fixed offline manifests directory), never an arbitrary client path. `POST /api/v1/experiments`
+accepts an optional `idempotency_key`; retries with the same key return the original record.
+`GET /health` is process health, and `GET /ready` verifies database connectivity.
+
+Example shape (the `configuration` is the existing `config/example_60_40.yaml` content converted
+to JSON):
+
+```json
+{"dataset_manifest":"correlation-break.json","idempotency_key":"demo-001","configuration":{"experiment_id":"offline-60-40-demo","seed":20260823,"...":"existing typed MVP 1 fields"}}
+```
+
+Retrieve metadata with `GET /api/v1/experiments/{id}` and the unchanged structured research
+result with `GET /api/v1/experiments/{id}/result`. Schema migrations are authoritative:
+`alembic upgrade head`; generate reviewed revisions with `alembic revision --autogenerate -m "..."`.
